@@ -4,16 +4,18 @@
 
 1. **Input routing**: a design pattern used to dynamically direct user input to the most appropriate processing path, model, or specialized agent based on the content of the request
 2. **Memory retrieval**: agent fetches conversation history from local sqlite hosted DB that persist data even after system crashes
-3. **Tokenization**: the process of breaking down text into smaller units called tokens (words, subwords, or characters) that large language models (LLMs) can process
-4. **Reasoning step (ReAct cycle)**: ReAct agents operate in an iterative loop: Thought (Reason) -> Action -> Observation. The reasoning step ensures the model doesn't just guess an answer but instead breaks down complex problems into manageable, logical, and traceable steps.
-5. **Tool selection**: if tool needed, agent selects between:
+3. **Reasoning step (LangGraph node)**: LangGraph orchestrates 
+   the agent loop as a graph. Each node is a component, each 
+   edge is a conditional connection. LangGraph's SqliteSaver 
+   checkpoints state at every step to SQLite.
+4. **Tool selection**: if tool needed, agent selects between:
    - Web search tool: triggered when user asks or web search needed
    - Code execution tool: triggered when user asks or automation needed
    - Vision tool: triggered when input is image/video
-6. **Tool execution**: the process of actively running a defined tool—such as a Python function, API call, or database query—after a LLM has decided it needs that tool to answer a user's request
-7. **Output parsing + validation**: techniques used to transform raw, unstructured text from LLMs into structured, machine-readable formats like JSON, Python objects, or lists
-8. **Memory update**: result stored back to sqlite local db
-9. **Response to user**: plain human readable text or image/video
+5. **Tool execution**: the process of actively running a defined tool—such as a Python function, API call, or database query—after a LLM has decided it needs that tool to answer a user's request
+6. **Output parsing + validation**: techniques used to transform raw, unstructured text from LLMs into structured, machine-readable formats like JSON, Python objects, or lists
+7. **Memory update**: result stored back to sqlite local db
+8. **Response to user**: plain human readable text or image/video
 
 ## On memory and storage
 - What database / storage mechanism will you use and why?
@@ -39,6 +41,6 @@
 |-----------|---------------|-------|--------|
 | Input Router | route the user request to its dedicated model/agent| text/image/video | chosen model/agent |
 | Memory Manager |Persist and retrieve conversation history from SQLite |user message + thread ID (read) / agent response (write)| conversation history (read) / confirmation (write) |
-| Agent (ReAct loop + response) | think, react, oversee and observe | user message + conversation history from Memory Manager | steps to be executed |
+| Agent (LangGraph graph) |orchestrate the full agent loop as a stateful graph with conditional edges | user message + conversation history | final response or tool call |
 | Tool Manager | tool selection and execution| Agent's steps | tool result (text, code output, or image description) |
 | Output Parser | structure model output into machine data and  validate agents answer | model output | understandable machine/human answer |

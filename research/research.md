@@ -98,3 +98,13 @@ acceptable given the project timeline and business context.
 **Decision:** models will be loaded one at a time when possible, 
 or swapped depending on the task — text tasks use LLM only, 
 vision tasks load VLM.
+
+
+## Final tech stack
+| Layer | Tool | Reason |
+|-------|------|--------|
+| Inference runtime | Ollama | local, simple, GGUF |
+| LLM | Llama 3.2 3B | fits VRAM, tool calling |
+| VLM | Qwen2.5-VL 7B | best vision quality in budget |
+| Agent framework | LangChain + LangGraph | production standard, company alignment |
+| Memory/persistence | SQLite via SqliteSaver | persistent, crash-safe |
