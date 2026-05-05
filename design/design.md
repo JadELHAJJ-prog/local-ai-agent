@@ -59,3 +59,11 @@
   invoke it
 - Ollama serves both models — swapped depending on task type
 - Output Parser always runs — even if no tool was used
+
+## LLM hyperparameters
+| Parameter | What it controls | Value I'll use | Why |
+|-----------|-----------------|----------------|-----|
+| temperature | it controls the randomness of the models output | 0.2 |  reason precisely, follow tool-calling format exactly, and produce structured outputs|
+| num_ctx | max number of token(context size) | 8192  | covers conversation history + tool results without excessive VRAM overhead |
+| top_p | Cumulative probability threshold for nucleus sampling | 0.9 | default |
+|num_predict | Maximum number of tokens to generate| 1024 | enough room for step-by-step reasoning without runaway generation|
