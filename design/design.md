@@ -1,0 +1,33 @@
+# Design phase
+
+## Agent flow — how a message is processed end to end
+
+1. **Input routing**: a design pattern used to dynamically direct user input to the most appropriate processing path, model, or specialized agent based on the content of the request
+2. **Memory retrieval**: agent fetches conversation history from local sqlite hosted DB that persist data even after system crashes
+3. **Tokenization**: the process of breaking down text into smaller units called tokens (words, subwords, or characters) that large language models (LLMs) can process
+4. **Reasoning step (ReAct cycle)**: ReAct agents operate in an iterative loop: Thought (Reason) -> Action -> Observation. The reasoning step ensures the model doesn't just guess an answer but instead breaks down complex problems into manageable, logical, and traceable steps.
+5. **Tool selection**: if tool needed, agent selects between:
+   - Web search tool: triggered when user asks or web search needed
+   - Code execution tool: triggered when user asks or automation needed
+   - Vision tool: triggered when input is image/video
+6. **Tool execution**: the process of actively running a defined tool—such as a Python function, API call, or database query—after a LLM has decided it needs that tool to answer a user's request
+7. **Output parsing + validation**: techniques used to transform raw, unstructured text from LLMs into structured, machine-readable formats like JSON, Python objects, or lists
+8. **Memory update**: result stored back to sqlite local db
+9. **Response to user**: plain human readable text or image/video
+
+## On memory and storage
+- What database / storage mechanism will you use and why?
+  sqlite local db because its better than ConversationBufferMemory that saves on RAM it prevents losing data history if any crash happens.
+- What gets stored? (full message? summary? embeddings?)
+  full message history (every user message 
+  and agent response). Summarization considered as future 
+  mitigation if context window is exceeded.
+- When is history retrieved?
+  Second step, after input routing.
+
+## Known limitations
+- ConversationBufferMemory rejected: stores history in RAM only, 
+  lost on restart. SQLite chosen instead.
+- SQLite limitation: if conversation history grows very large, 
+  it may exceed the model's context window. 
+  Future mitigation: summarization or sliding window.
