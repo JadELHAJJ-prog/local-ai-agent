@@ -28,9 +28,14 @@ graph.add_edge("agent_node", END)
 # 4. compile
 app = graph.compile()
 
-# 5. test it
 if __name__ == "__main__":
-    result = app.invoke(
-        {"messages": [("user", "hello, who are you?")], "thread_id": "test-001"}
-    )
-    print(result["messages"][-1].content)
+    print("Agent ready. Type 'exit' to quit.\n")
+    history = []
+    while True:
+        user_input = input("You: ")
+        if user_input.lower() == "exit":
+            break
+        history.append(("user", user_input))
+        result = app.invoke({"messages": history, "thread_id": "test-001"})
+        history = result["messages"]  # update history with full state
+        print(f"Agent: {result['messages'][-1].content}\n")
