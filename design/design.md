@@ -31,3 +31,14 @@
 - SQLite limitation: if conversation history grows very large, 
   it may exceed the model's context window. 
   Future mitigation: summarization or sliding window.
+
+
+## Components
+
+| Component | Responsibility | Input | Output |
+|-----------|---------------|-------|--------|
+| Input Router | route the user request to its dedicated model/agent| text/image/video | chosen model/agent |
+| Memory Manager |Persist and retrieve conversation history from SQLite |user message + thread ID (read) / agent response (write)| conversation history (read) / confirmation (write) |
+| Agent (ReAct loop + response) | think, react, oversee and observe | user message + conversation history from Memory Manager | steps to be executed |
+| Tool Manager | tool selection and execution| Agent's steps | tool result (text, code output, or image description) |
+| Output Parser | structure model output into machine data and  validate agents answer | model output | understandable machine/human answer |
