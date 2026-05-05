@@ -58,8 +58,7 @@ and more focus on agent architecture.
 | AutoGen | multi agent communications to solve an issue | high but overkill for our usecase | huge projects|
 
 ### My conclusion
-I chose LangChain over smolagents for two reasons: it aligns 
-with an internal company project, and LangChain/LangGraph is 
+I chose LangChain over smolagents because LangChain/LangGraph is 
 the production standard for complex, reliable multi-agent 
 systems with durable state management and human-in-the-loop 
 capabilities. The tradeoff is accepting more abstraction layers, 
