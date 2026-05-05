@@ -44,3 +44,17 @@
 | Agent (LangGraph graph) |orchestrate the full agent loop as a stateful graph with conditional edges | user message + conversation history | final response or tool call |
 | Tool Manager | tool selection and execution| Agent's steps | tool result (text, code output, or image description) |
 | Output Parser | structure model output into machine data and  validate agents answer | model output | understandable machine/human answer |
+
+
+## Architecture
+See architecture-diagram.png
+
+### Key design decisions reflected in the diagram
+- Input Router sits first — separates text from vision before 
+  anything else
+- Memory Manager is called twice — retrieve before agent, 
+  save after output parser
+- Tool Manager is optional path — agent decides whether to 
+  invoke it
+- Ollama serves both models — swapped depending on task type
+- Output Parser always runs — even if no tool was used
