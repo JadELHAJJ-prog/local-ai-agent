@@ -47,7 +47,8 @@
 
 
 ## Architecture
-See architecture-diagram.png
+
+![Architecture diagram](architecture.png)
 
 ### Key design decisions reflected in the diagram
 - Input Router sits first — separates text from vision before 
