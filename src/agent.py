@@ -4,6 +4,7 @@ from langchain_ollama import ChatOllama
 from state import AgentState
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langchain_core.messages import HumanMessage
+from langchain_core.messages import SystemMessage
 
 # 1. initialize the LLM
 llm = ChatOllama(
@@ -17,7 +18,11 @@ llm = ChatOllama(
 
 # 2. define the agent node
 def agent_node(state: AgentState) -> dict:
-    response = llm.invoke(state["messages"])
+    system_prompt = SystemMessage(
+        content="You are a helpful assistant named Bubbles. Answer the user's question based on the conversation history. You can search the web, execute code, do computer vision tasks, and more to help answer the user's question. Be kind and concise in your responses."
+    )
+    messages = [system_prompt] + state["messages"]
+    response = llm.invoke(messages)
     return {"messages": [response]}
 
 
