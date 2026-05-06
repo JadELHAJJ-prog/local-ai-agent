@@ -1,18 +1,20 @@
 # agent.py
 from langgraph.graph import StateGraph, END
-from langchain_ollama import ChatOllama
-from state import AgentState
-from langgraph.checkpoint.sqlite import SqliteSaver
-from langchain_core.messages import HumanMessage
-from langchain_core.messages import SystemMessage
-
-from langchain_core.tools import tool
-from ddgs import DDGS
 from langgraph.prebuilt import ToolNode
+from langgraph.checkpoint.sqlite import SqliteSaver
+
+from langchain_ollama import ChatOllama
+from langchain_core.messages import HumanMessage
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.tools import tool
+
+from state import AgentState
+from ddgs import DDGS
 
 import subprocess
 import tempfile
 import os
+from datetime import date
 
 
 @tool
@@ -95,22 +97,32 @@ llm = ChatOllama(
 
 llm_with_tools = llm.bind_tools(tools)
 
+prompt = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            """You are Bubbles, a helpful AI assistant.
+Today is {date}.
+
+You have access to these tools:
+- search_web: ONLY use for current events, recent news, or facts you cannot know from training data. Do NOT use for casual conversation, math, or general knowledge.
+- execute_code: use when asked to RUN or EXECUTE code. Always use this for calculations that need precise results.
+
+If you can answer from your own knowledge, do so directly without using any tool.""",
+        ),
+        MessagesPlaceholder(variable_name="messages"),
+    ]
+)
 
 # 2. define the agent node
 def agent_node(state: AgentState) -> dict:
-    system_prompt = SystemMessage(content="""You are a helpful assistant named Bubbles.
-    
-You have access to these tools:
-- search_web: use when the user asks for current information, news, or facts you may not know
-- execute_code: use when the user asks you to RUN, EXECUTE, or TEST code. Always use this tool when asked to run code — never just show the code.
-
-Rules:
-- If asked to run or execute code, ALWAYS use execute_code tool, never just display it.
-- If asked for current information, use search_web.
-- Be kind and concise in your responses.""")
-
-    messages = [system_prompt] + state["messages"]
-    response = llm_with_tools.invoke(messages)
+    chain = prompt | llm_with_tools
+    response = chain.invoke(
+        {
+            "date": date.today().isoformat(),
+            "messages": state["messages"],
+        }
+    )
     return {"messages": [response]}
 
 
