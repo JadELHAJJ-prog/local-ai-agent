@@ -5,7 +5,7 @@ from langgraph.types import interrupt
 from langgraph.types import Command
 
 from langchain_ollama import ChatOllama
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, BaseMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.tools import tool
 
@@ -167,13 +167,20 @@ Examples of tool needed:
 )
 
 
+def trim_messages_window(messages: list, max_messages: int = 20) -> list:
+    """Keep only the last N messages to avoid context overflow."""
+    if len(messages) > max_messages:
+        return messages[-max_messages:]
+    return messages
+
+
 # Define the agent node
 def agent_node(state: AgentState) -> dict:
     chain = prompt | llm_with_tools
     response = chain.invoke(
         {
             "date": date.today().isoformat(),
-            "messages": state["messages"],
+            "messages": trim_messages_window(state["messages"]),
         }
     )
     return {"messages": [response]}
