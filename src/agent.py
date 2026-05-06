@@ -6,6 +6,10 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langchain_core.messages import HumanMessage
 from langchain_core.messages import SystemMessage
 
+from langchain_community.tools import DuckDuckGoSearchResults
+from langgraph.prebuilt import ToolNode
+
+tools = [DuckDuckGoSearchResults()]
 # 1. initialize the LLM
 llm = ChatOllama(
     model="llama3.2",
@@ -15,6 +19,8 @@ llm = ChatOllama(
     top_p=0.9,
 )
 
+llm_with_tools = llm.bind_tools(tools)
+
 
 # 2. define the agent node
 def agent_node(state: AgentState) -> dict:
@@ -22,12 +28,19 @@ def agent_node(state: AgentState) -> dict:
         content="You are a helpful assistant named Bubbles. Answer the user's question based on the conversation history. You can search the web, execute code, do computer vision tasks, and more to help answer the user's question. Be kind and concise in your responses."
     )
     messages = [system_prompt] + state["messages"]
-    response = llm.invoke(messages)
+    response = llm_with_tools.invoke(messages)
     return {"messages": [response]}
 
 
 def is_not_empty(content: str) -> bool:
     return bool(content and content.strip())
+
+
+def should_use_tool(state: AgentState) -> str:
+    last_message = state["messages"][-1]
+    if last_message.tool_calls:
+        return "tool_node"
+    return "output_parser_node"
 
 
 def output_parser_node(state: AgentState) -> dict:
@@ -47,9 +60,9 @@ def output_parser_node(state: AgentState) -> dict:
 graph = StateGraph(AgentState)
 graph.add_node("agent_node", agent_node)
 graph.add_node("output_parser_node", output_parser_node)
+graph.add_node("tool_node", ToolNode(tools))
 graph.set_entry_point("agent_node")
-graph.add_edge("agent_node", "output_parser_node")
-
+graph.add_edge("tool_node", "agent_node")
 
 def should_retry(state: AgentState) -> str:
     if state["is_valid"]:
@@ -61,6 +74,9 @@ def should_retry(state: AgentState) -> str:
 
 graph.add_conditional_edges(
     "output_parser_node", should_retry, {"retry": "agent_node", "end": END}
+)
+graph.add_conditional_edges(
+    "agent_node", should_use_tool, {"tool_node": "tool_node", "output_parser_node": "output_parser_node"}
 )
 
 if __name__ == "__main__":
