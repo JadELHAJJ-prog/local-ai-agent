@@ -1,4 +1,6 @@
 # agent.py
+import base64
+
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -17,6 +19,7 @@ import subprocess
 import tempfile
 import os
 from datetime import date
+import re
 
 
 @tool
@@ -87,7 +90,45 @@ def search_web(query: str) -> str:
         )
 
 
-tools = [search_web, execute_code]
+@tool
+def analyze_image(image_path: str, question: str = "What is in this image?") -> str:
+    """Analyze an image using vision AI. Use this when the user
+    provides an image path and wants to know what's in it,
+    extract text from it, or ask questions about it.
+    Input should be the path to the image file."""
+
+    if not os.path.exists(image_path):
+        return f"Error: Image file not found at {image_path}"
+    with open(image_path, "rb") as f:
+        base64_image = base64.b64encode(f.read()).decode("utf-8")
+
+    vlm = ChatOllama(
+        model="qwen2.5vl:7b",
+        num_ctx=8192,
+        temperature=0.1,
+        num_predict=1024,
+        top_p=0.9,
+    )
+    # 4. build message with image + question
+    message = HumanMessage(
+        content=[
+            {"type": "text", "text": question},
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
+            },
+        ]
+    )
+
+    vlm_response = vlm.invoke([message])
+    return (
+        vlm_response.content
+        if vlm_response.content
+        else "No response from vision model."
+    )
+
+
+tools = [search_web, execute_code, analyze_image]
 # 1. initialize the LLM
 llm = ChatOllama(
     model="qwen2.5:7b",
@@ -108,6 +149,8 @@ prompt = ChatPromptTemplate.from_messages(
 TOOLS — only use when explicitly needed:
 - search_web: ONLY if user asks for news, current events, or real-time data. NEVER for greetings, math, coding, or general questions.
 - execute_code: ONLY if user says "run", "execute", or "test this code".
+- analyze_image: use when user provides an image path ending in 
+  .jpg .jpeg .png .gif .webp. Extract the path and analyze it.
 
 RULE: If the user says hi, hello, how are you, or asks a general question — respond directly. DO NOT use any tool.
 
@@ -198,6 +241,18 @@ def should_retry(state: AgentState) -> str:
     return "retry"
 
 
+def parse_user_input(user_input: str) -> tuple[str, str | None]:
+    """Extract image path from user message if present."""
+    # look for a file path pattern
+    match = re.search(r"(/[\w/.\-_]+\.(?:jpg|jpeg|png|gif|webp))", user_input)
+    if match:
+        image_path = match.group(1)
+        # remove path from message
+        clean_message = user_input.replace(image_path, "").strip()
+        return clean_message, image_path
+    return user_input, None
+
+
 # 3. build the graph
 graph = StateGraph(AgentState)
 graph.add_node("agent_node", agent_node)
@@ -236,10 +291,20 @@ if __name__ == "__main__":
 
             print("Agent: ", end="", flush=True)
 
+            text, image_path = parse_user_input(user_input)
+
+            if image_path:
+                # inject image path into message so agent knows to use analyze_image
+                message = HumanMessage(
+                    content=f"{text} [image provided at path: {image_path}]"
+                )
+            else:
+                message = HumanMessage(content=text)
+
             # stream until interrupt or end
             interrupted = False
             for chunk, metadata in app.stream(
-                {"messages": [HumanMessage(content=user_input)]},
+                {"messages": [message]},
                 config=config,
                 stream_mode="messages",
             ):
