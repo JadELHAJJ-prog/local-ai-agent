@@ -50,10 +50,88 @@ Before writing any code I went through two structured phases:
   - [x] Persistent memory via SqliteSaver
   - [x] Web search tool (DuckDuckGo)
   - [x] Code execution tool (Docker sandbox)
-  - [ ] Vision tool (VLM)
+  - [x] Vision tool (VLM)
 
 ## Hardware
 
 - GPU: NVIDIA RTX 4060 (8GB VRAM)
 - OS: Ubuntu 24
 - Models run fully on-device via Ollama
+
+## Installation
+
+### Prerequisites
+
+- Ubuntu 24 (or any Linux distro)
+- NVIDIA GPU with 8GB+ VRAM (tested on RTX 4060)
+- NVIDIA drivers installed
+- Python 3.11+
+- Git
+- Docker
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/your-username/local-ai-agent.git
+cd local-ai-agent
+```
+
+### 2. Install Ollama
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+Pull the required models:
+
+```bash
+ollama pull qwen2.5:7b       # LLM for reasoning and tool calling
+ollama pull qwen2.5vl:7b     # VLM for image and video analysis
+```
+
+### 3. Set up Python environment
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### 4. Build the Docker sandbox
+
+Used for safe code execution:
+
+```bash
+docker build -f docker/Dockerfile.sandbox -t agent-sandbox .
+```
+
+### 5. Configure environment variables
+
+Edit `.env` with your settings:
+
+```env
+LLM_MODEL=qwen2.5:7b
+VLM_MODEL=qwen2.5vl:7b
+NUM_CTX=8192
+TEMPERATURE=0.1
+NUM_PREDICT=1024
+TOP_P=0.9
+THREAD_ID=main
+SANDBOX_IMAGE=agent-sandbox
+MAX_FRAMES=3
+```
+
+### 6. Run the agent
+
+```bash
+cd src
+python agent.py
+```
+
+### VRAM requirements
+
+| Component | VRAM |
+|-----------|------|
+| LLM (Qwen2.5 7B) | ~4.7 GB |
+| VLM (Qwen2.5-VL 7B) | ~4.5 GB |
+| Both simultaneously | Not possible on 8GB — Ollama swaps automatically |
