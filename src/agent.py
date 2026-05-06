@@ -26,11 +26,42 @@ def agent_node(state: AgentState) -> dict:
     return {"messages": [response]}
 
 
+def is_not_empty(content: str) -> bool:
+    return bool(content and content.strip())
+
+
+def output_parser_node(state: AgentState) -> dict:
+    last_message = state["messages"][-1]
+    content = last_message.content
+
+    is_valid = is_not_empty(content)
+    retry_count = state.get("retry_count", 0)
+
+    return {
+        "is_valid": is_valid,
+        "retry_count": retry_count + 1 if not is_valid else retry_count,
+    }
+
+
 # 3. build the graph
 graph = StateGraph(AgentState)
 graph.add_node("agent_node", agent_node)
+graph.add_node("output_parser_node", output_parser_node)
 graph.set_entry_point("agent_node")
-graph.add_edge("agent_node", END)
+graph.add_edge("agent_node", "output_parser_node")
+
+
+def should_retry(state: AgentState) -> str:
+    if state["is_valid"]:
+        return "end"
+    if state.get("retry_count", 0) >= 3:
+        return "end"
+    return "retry"
+
+
+graph.add_conditional_edges(
+    "output_parser_node", should_retry, {"retry": "agent_node", "end": END}
+)
 
 if __name__ == "__main__":
     with SqliteSaver.from_conn_string("memory.db") as memory:
