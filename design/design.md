@@ -67,3 +67,16 @@
 | num_ctx | max number of token(context size) | 8192  | covers conversation history + tool results without excessive VRAM overhead |
 | top_p | Cumulative probability threshold for nucleus sampling | 0.9 | default |
 |num_predict | Maximum number of tokens to generate| 1024 | enough room for step-by-step reasoning without runaway generation|
+
+
+## V1 implementation — scope
+Built in v1:
+- Agent node (LangGraph)
+- Memory Manager (SqliteSaver)
+- System prompt (injected at runtime)
+
+Deferred to next iteration:
+- Input Router
+- Tool Manager (web search, code execution)
+- VLM / vision input
+- Output Parser
