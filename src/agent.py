@@ -1,3 +1,4 @@
+import cv2
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -38,6 +39,7 @@ NUM_CTX = int(os.getenv("NUM_CTX", "8192"))
 TEMPERATURE = float(os.getenv("TEMPERATURE", "0.1"))
 NUM_PREDICT = int(os.getenv("NUM_PREDICT", "1024"))
 TOP_P = float(os.getenv("TOP_P", "0.9"))
+MAX_FRAMES = int(os.getenv("MAX_FRAMES", "8"))
 
 # Define LLM and VLM
 llm = ChatOllama(
@@ -50,7 +52,7 @@ llm = ChatOllama(
 
 vlm = ChatOllama(
     model=VLM_MODEL,
-    num_ctx=NUM_CTX,
+    num_ctx=32768,
     temperature=TEMPERATURE,
     num_predict=NUM_PREDICT,
     top_p=TOP_P,
@@ -156,7 +158,71 @@ def analyze_image(image_path: str, question: str = "What is in this image?") -> 
     )
 
 
-tools = [search_web, execute_code, analyze_image]
+@tool
+def analyze_video(
+    video_path: str,
+    question: str = "What is happening in this video?",
+) -> str:
+    """Analyze a video using vision AI by sampling key frames.
+    Use this when the user provides a video file path (.mp4, .avi, .mov, .mkv).
+    Input should be the path to the video file."""
+
+    max_frames = MAX_FRAMES
+
+    if not os.path.exists(video_path):
+        return f"Error: Video file not found at {video_path}"
+
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        return f"Error: Could not open video file at {video_path}"
+
+    try:
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        interval = max(1, total_frames // max_frames)
+        frames_analyzed = 0
+
+        # build one message with all frames + question
+        content = [{"type": "text", "text": question}]
+
+        for frame_idx in range(0, total_frames, interval):
+            if frames_analyzed >= max_frames:
+                break
+
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+            ret, frame = cap.read()
+            if not ret:
+                continue
+
+            frame = cv2.resize(frame, (512, 512))
+            _, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+            base64_image = base64.b64encode(buffer.tobytes()).decode("utf-8")
+
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
+                }
+            )
+
+            frames_analyzed += 1
+            print(f"Extracted frame {frames_analyzed}/{max_frames}...", flush=True)
+
+        if frames_analyzed == 0:
+            return "No frames could be extracted from this video."
+
+        print("Sending frames to vision model...", flush=True)
+
+        # one single VLM call with all frames
+        message = HumanMessage(content=content)
+        vlm_response = vlm.invoke([message])
+
+        return vlm_response.content or "No response from vision model."
+
+    finally:
+        cap.release()
+
+
+tools = [search_web, execute_code, analyze_image, analyze_video]
 llm_with_tools = llm.bind_tools(tools)
 
 # Define prompt template with tool instructions and examples
@@ -171,6 +237,8 @@ TOOLS — only use when explicitly needed:
 - execute_code: ONLY if user says "run", "execute", or "test this code".
 - analyze_image: use when user provides an image path ending in 
   .jpg .jpeg .png .gif .webp. Extract the path and analyze it.
+- analyze_video: use when user provides a video path ending in 
+  .mp4 .avi .mov .mkv. Extract the path and analyze it.
 
 RULE: If the user says hi, hello, how are you, or asks a general question — respond directly. DO NOT use any tool.
 
@@ -293,7 +361,9 @@ def should_retry(state: AgentState) -> str:
 # Parse user input to extract image path if present, and clean the message for the agent
 def parse_user_input(user_input: str) -> tuple[str, str | None]:
     """Extract image path from user message if present."""
-    match = re.search(r"(/[\w/.\-_]+\.(?:jpg|jpeg|png|gif|webp))", user_input)
+    match = re.search(
+        r"(/[\w/.\-_]+\.(?:jpg|jpeg|png|gif|webp|mp4|avi|mov|mkv))", user_input
+    )
     if match:
         image_path = match.group(1)
         # remove path from message
@@ -336,7 +406,11 @@ if __name__ == "__main__":
         print("=== Bubbles AI Agent ===")
         print("1. Start new conversation")
         print("2. Continue previous conversation")
-        choice = input("Choose (1/2): ").strip()
+        while True:
+            choice = input("Choose (1/2): ").strip()
+            if choice in ("1", "2"):
+                break
+            print("Invalid choice. Please enter 1 or 2.")
 
         if choice == "2":
             thread_id = THREAD_ID  # load from .env
