@@ -2,6 +2,8 @@
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.types import interrupt
+from langgraph.types import Command
 
 from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage
@@ -142,8 +144,15 @@ def is_not_empty(content: str) -> bool:
 def should_use_tool(state: AgentState) -> str:
     last_message = state["messages"][-1]
     if last_message.tool_calls:
-        return "tool_node"
+        return "human_approval_node"
     return "output_parser_node"
+
+
+def should_execute_tool(state: AgentState) -> str:
+    feedback = state.get("human_feedback", "")
+    if feedback.lower().startswith("yes"):
+        return "tool_node"
+    return "agent_node"
 
 
 def output_parser_node(state: AgentState) -> dict:
@@ -159,13 +168,26 @@ def output_parser_node(state: AgentState) -> dict:
     }
 
 
-# 3. build the graph
-graph = StateGraph(AgentState)
-graph.add_node("agent_node", agent_node)
-graph.add_node("output_parser_node", output_parser_node)
-graph.add_node("tool_node", ToolNode(tools))
-graph.set_entry_point("agent_node")
-graph.add_edge("tool_node", "agent_node")
+def human_approval_node(state: AgentState) -> dict:
+    last_message = state["messages"][-1]
+    tool_call = last_message.tool_calls[0]
+
+    print(f"\nAgent wants to call: '{tool_call['name']}'")
+    print(f"With args: {tool_call['args']}\n")
+
+    human_response = interrupt("Approve this tool call? (yes/no + optional feedback): ")
+
+    if human_response.lower().startswith("yes"):
+        return {"human_feedback": human_response}
+    else:
+        return {
+            "human_feedback": human_response,
+            "messages": [
+                HumanMessage(
+                    content=f"Tool call rejected. Human feedback: {human_response}. Please revise your approach."
+                )
+            ],
+        }
 
 
 def should_retry(state: AgentState) -> str:
@@ -176,31 +198,67 @@ def should_retry(state: AgentState) -> str:
     return "retry"
 
 
+# 3. build the graph
+graph = StateGraph(AgentState)
+graph.add_node("agent_node", agent_node)
+graph.add_node("output_parser_node", output_parser_node)
+graph.add_node("tool_node", ToolNode(tools))
+graph.set_entry_point("agent_node")
+graph.add_edge("tool_node", "agent_node")
+graph.add_node("human_approval_node", human_approval_node)
+graph.add_conditional_edges(
+    "human_approval_node",
+    should_execute_tool,
+    {"tool_node": "tool_node", "agent_node": "agent_node"},
+)
+
 graph.add_conditional_edges(
     "output_parser_node", should_retry, {"retry": "agent_node", "end": END}
 )
 graph.add_conditional_edges(
     "agent_node",
     should_use_tool,
-    {"tool_node": "tool_node", "output_parser_node": "output_parser_node"},
+    {
+        "human_approval_node": "human_approval_node",
+        "output_parser_node": "output_parser_node",
+    },
 )
 
 if __name__ == "__main__":
     with SqliteSaver.from_conn_string("memory.db") as memory:
         app = graph.compile(checkpointer=memory)
+        config = {"configurable": {"thread_id": "test-003"}}
         print("Agent ready. Type 'exit' to quit.\n")
         while True:
             user_input = input("You: ")
             if user_input.lower() == "exit":
                 break
+
             print("Agent: ", end="", flush=True)
+
+            # stream until interrupt or end
+            interrupted = False
             for chunk, metadata in app.stream(
                 {"messages": [HumanMessage(content=user_input)]},
-                config={"configurable": {"thread_id": "test-003"}},
+                config=config,
                 stream_mode="messages",
             ):
-                # only print chunks from agent_node, skip tool output
                 if metadata.get("langgraph_node") == "agent_node":
                     if hasattr(chunk, "content") and chunk.content:
                         print(chunk.content, end="", flush=True)
+
+            # check if graph was interrupted
+            state = app.get_state(config)
+            while state.next:  # graph is paused waiting for human
+                human_input = input("\nYour decision: ")
+                # resume with human input
+                for chunk, metadata in app.stream(
+                    Command(resume=human_input),
+                    config=config,
+                    stream_mode="messages",
+                ):
+                    if metadata.get("langgraph_node") == "agent_node":
+                        if hasattr(chunk, "content") and chunk.content:
+                            print(chunk.content, end="", flush=True)
+                state = app.get_state(config)
             print("\n")
