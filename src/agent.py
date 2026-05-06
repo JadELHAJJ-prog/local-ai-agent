@@ -88,7 +88,7 @@ def search_web(query: str) -> str:
 tools = [search_web, execute_code]
 # 1. initialize the LLM
 llm = ChatOllama(
-    model="llama3.2",
+    model="qwen2.5:7b",
     num_ctx=8192,
     temperature=0.1,
     num_predict=1024,
@@ -101,18 +101,27 @@ prompt = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            """You are Bubbles, a helpful AI assistant.
-Today is {date}.
+            """You are Bubbles, a helpful AI assistant. Today is {date}.
 
-You have access to these tools:
-- search_web: ONLY use for current events, recent news, or facts you cannot know from training data. Do NOT use for casual conversation, math, or general knowledge.
-- execute_code: use when asked to RUN or EXECUTE code. Always use this for calculations that need precise results.
+TOOLS — only use when explicitly needed:
+- search_web: ONLY if user asks for news, current events, or real-time data. NEVER for greetings, math, coding, or general questions.
+- execute_code: ONLY if user says "run", "execute", or "test this code".
 
-If you can answer from your own knowledge, do so directly without using any tool.""",
+RULE: If the user says hi, hello, how are you, or asks a general question — respond directly. DO NOT use any tool.
+
+Examples of NO tool needed:
+- "hi" → just greet back
+- "what is 2+2" → just answer
+- "who are you" → just introduce yourself
+
+Examples of tool needed:
+- "what is the latest news about AI" → use search_web
+- "run this python script" → use execute_code""",
         ),
         MessagesPlaceholder(variable_name="messages"),
     ]
 )
+
 
 # 2. define the agent node
 def agent_node(state: AgentState) -> dict:
@@ -184,8 +193,14 @@ if __name__ == "__main__":
             user_input = input("You: ")
             if user_input.lower() == "exit":
                 break
-            result = app.invoke(
+            print("Agent: ", end="", flush=True)
+            for chunk, metadata in app.stream(
                 {"messages": [HumanMessage(content=user_input)]},
-                config={"configurable": {"thread_id": "test-001"}},
-            )
-            print(f"Agent: {result['messages'][-1].content}\n")
+                config={"configurable": {"thread_id": "test-003"}},
+                stream_mode="messages",
+            ):
+                # only print chunks from agent_node, skip tool output
+                if metadata.get("langgraph_node") == "agent_node":
+                    if hasattr(chunk, "content") and chunk.content:
+                        print(chunk.content, end="", flush=True)
+            print("\n")

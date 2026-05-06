@@ -103,7 +103,7 @@ vision tasks load VLM.
 | Layer | Tool | Reason |
 |-------|------|--------|
 | Inference runtime | Ollama | local, simple, GGUF |
-| LLM | Llama 3.2 3B | fits VRAM, tool calling |
+| LLM | Qwen2.5 7B | fits VRAM, tool calling |
 | VLM | Qwen2.5-VL 7B | best vision quality in budget |
 | Agent framework | LangChain + LangGraph | production standard, company alignment |
 | Memory/persistence | SQLite via SqliteSaver | persistent, crash-safe |

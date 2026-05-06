@@ -33,6 +33,7 @@
 - **Model hallucination**: Llama 3.2 3B sometimes ignores tool results and answers from training data. Larger model or fine-tuning considered for v2.
 - **SSL certificate permission error**: non-blocking warning on web search related to system certificate permissions on Ubuntu 24. Does not affect functionality.
 - Llama 3.2 3B calls one tool at a time (sequential). Parallel tool calling requires a larger model. Impact: multi-tool tasks require multiple ReAct cycles.
+- Llama 3.2 3B unreliable for tool calling: model confuses tool call format with natural language responses, and calls tools unnecessarily for simple queries. Switched to Qwen2.5 7B for better tool calling reliability.
 
 ## Components
 
