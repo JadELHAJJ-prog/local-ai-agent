@@ -110,13 +110,13 @@ TOOLS — only use when explicitly needed:
 RULE: If the user says hi, hello, how are you, or asks a general question — respond directly. DO NOT use any tool.
 
 Examples of NO tool needed:
-- "hi" → just greet back
-- "what is 2+2" → just answer
-- "who are you" → just introduce yourself
+- "hi" -> just greet back
+- "what is 2+2" -> just answer
+- "who are you" -> just introduce yourself
 
 Examples of tool needed:
-- "what is the latest news about AI" → use search_web
-- "run this python script" → use execute_code""",
+- "what is the latest news about AI" -> use search_web
+- "run this python script" -> use execute_code""",
         ),
         MessagesPlaceholder(variable_name="messages"),
     ]

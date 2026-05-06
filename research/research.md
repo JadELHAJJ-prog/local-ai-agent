@@ -107,3 +107,10 @@ vision tasks load VLM.
 | VLM | Qwen2.5-VL 7B | best vision quality in budget |
 | Agent framework | LangChain + LangGraph | production standard, company alignment |
 | Memory/persistence | SQLite via SqliteSaver | persistent, crash-safe |
+
+### Final model choice update
+LLM switched from Llama 3.2 3B to Qwen2.5 7B after testing.
+Reason: Llama 3.2 3B unreliable for tool calling — confused 
+tool format with natural language, called tools unnecessarily.
+Qwen2.5 7B handles tool calling correctly out of the box.
+VRAM: ~4.5GB, fits comfortably in 8GB budget.
