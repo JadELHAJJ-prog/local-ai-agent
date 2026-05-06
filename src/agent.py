@@ -6,10 +6,29 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langchain_core.messages import HumanMessage
 from langchain_core.messages import SystemMessage
 
-from langchain_community.tools import DuckDuckGoSearchResults
+from langchain_core.tools import tool
+from ddgs import DDGS
 from langgraph.prebuilt import ToolNode
 
-tools = [DuckDuckGoSearchResults()]
+
+@tool
+def search_web(query: str) -> str:
+    """Search the web for current information, recent events,
+    or anything that requires up-to-date knowledge beyond
+    your training data. Input should be a search query string."""
+    with DDGS() as ddgs:
+        results = ddgs.text(query, max_results=3)
+        if not results:
+            return "No results found."
+        return "\n".join(
+            [
+                f"Title: {r['title']}\nURL: {r['href']}\nSummary: {r['body']}"
+                for r in results
+            ]
+        )
+
+
+tools = [search_web]
 # 1. initialize the LLM
 llm = ChatOllama(
     model="llama3.2",
@@ -64,6 +83,7 @@ graph.add_node("tool_node", ToolNode(tools))
 graph.set_entry_point("agent_node")
 graph.add_edge("tool_node", "agent_node")
 
+
 def should_retry(state: AgentState) -> str:
     if state["is_valid"]:
         return "end"
@@ -76,7 +96,9 @@ graph.add_conditional_edges(
     "output_parser_node", should_retry, {"retry": "agent_node", "end": END}
 )
 graph.add_conditional_edges(
-    "agent_node", should_use_tool, {"tool_node": "tool_node", "output_parser_node": "output_parser_node"}
+    "agent_node",
+    should_use_tool,
+    {"tool_node": "tool_node", "output_parser_node": "output_parser_node"},
 )
 
 if __name__ == "__main__":
