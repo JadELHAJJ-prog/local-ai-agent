@@ -10,6 +10,61 @@ from langchain_core.tools import tool
 from ddgs import DDGS
 from langgraph.prebuilt import ToolNode
 
+import subprocess
+import tempfile
+import os
+
+
+@tool
+def execute_code(code: str) -> str:
+    """Execute Python code safely in an isolated Docker container.
+    Use this when the user asks to run code, perform calculations,
+    or test a Python script. Input should be valid Python code."""
+    tmp_path = None
+    try:
+        # step 1 - write code to temp file
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tmp:
+            tmp.write(code)
+            tmp_path = tmp.name
+
+        # step 2 - run in docker sandbox
+        result = subprocess.run(
+            [
+                "docker",
+                "run",
+                "--rm",
+                "--network",
+                "none",
+                "--memory",
+                "128m",
+                "--cpus",
+                "0.5",
+                "-v",
+                f"{tmp_path}:/app/code.py:ro",
+                "python:3.11-slim",
+                "python",
+                "/app/code.py",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        # step 3 - return output or error
+        if result.returncode == 0:
+            return result.stdout or "Code executed successfully with no output."
+        else:
+            return f"Error:\n{result.stderr}"
+
+    except subprocess.TimeoutExpired:
+        return "Error: Code execution timed out after 30 seconds."
+    except Exception as e:
+        return f"Error: {e}"
+    finally:
+        # step 4 - cleanup
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
 
 @tool
 def search_web(query: str) -> str:
@@ -28,7 +83,7 @@ def search_web(query: str) -> str:
         )
 
 
-tools = [search_web]
+tools = [search_web, execute_code]
 # 1. initialize the LLM
 llm = ChatOllama(
     model="llama3.2",
@@ -43,9 +98,17 @@ llm_with_tools = llm.bind_tools(tools)
 
 # 2. define the agent node
 def agent_node(state: AgentState) -> dict:
-    system_prompt = SystemMessage(
-        content="You are a helpful assistant named Bubbles. Answer the user's question based on the conversation history. You can search the web, execute code, do computer vision tasks, and more to help answer the user's question. Be kind and concise in your responses."
-    )
+    system_prompt = SystemMessage(content="""You are a helpful assistant named Bubbles.
+    
+You have access to these tools:
+- search_web: use when the user asks for current information, news, or facts you may not know
+- execute_code: use when the user asks you to RUN, EXECUTE, or TEST code. Always use this tool when asked to run code — never just show the code.
+
+Rules:
+- If asked to run or execute code, ALWAYS use execute_code tool, never just display it.
+- If asked for current information, use search_web.
+- Be kind and concise in your responses.""")
+
     messages = [system_prompt] + state["messages"]
     response = llm_with_tools.invoke(messages)
     return {"messages": [response]}
