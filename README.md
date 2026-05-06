@@ -45,7 +45,12 @@ Before writing any code I went through two structured phases:
 
 - [x] Phase 1 — Research
 - [x] Phase 2 — Design
-- [ ] Phase 3 — Code
+- [x] Phase 3 — Code (in progress)
+  - [x] Basic LangGraph ReAct agent
+  - [x] Persistent memory via SqliteSaver
+  - [x] Web search tool (DuckDuckGo)
+  - [x] Code execution tool (Docker sandbox)
+  - [ ] Vision tool (VLM)
 
 ## Hardware
 
