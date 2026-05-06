@@ -32,6 +32,7 @@
 - **Code execution has no network access**: Docker sandbox runs with `--network none` by design. Code cannot install packages or make external requests. Only Python standard library available inside the container. Pre-built image with common packages deferred to v2.
 - **Model hallucination**: Llama 3.2 3B sometimes ignores tool results and answers from training data. Larger model or fine-tuning considered for v2.
 - **SSL certificate permission error**: non-blocking warning on web search related to system certificate permissions on Ubuntu 24. Does not affect functionality.
+- Llama 3.2 3B calls one tool at a time (sequential). Parallel tool calling requires a larger model. Impact: multi-tool tasks require multiple ReAct cycles.
 
 ## Components
 
