@@ -1,6 +1,3 @@
-# agent.py
-import base64
-
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -20,8 +17,26 @@ import tempfile
 import os
 from datetime import date
 import re
+import base64
+
+# Define LLM and VLM
+llm = ChatOllama(
+    model="qwen2.5:7b",
+    num_ctx=8192,
+    temperature=0.1,
+    num_predict=1024,
+    top_p=0.9,
+)
+vlm = ChatOllama(
+    model="qwen2.5vl:7b",
+    num_ctx=8192,
+    temperature=0.1,
+    num_predict=1024,
+    top_p=0.9,
+)
 
 
+# Define tools
 @tool
 def execute_code(code: str) -> str:
     """Execute Python code safely in an isolated Docker container.
@@ -48,7 +63,7 @@ def execute_code(code: str) -> str:
                 "0.5",
                 "-v",
                 f"{tmp_path}:/app/code.py:ro",
-                "python:3.11-slim",
+                "agent-sandbox",
                 "python",
                 "/app/code.py",
             ],
@@ -102,14 +117,6 @@ def analyze_image(image_path: str, question: str = "What is in this image?") -> 
     with open(image_path, "rb") as f:
         base64_image = base64.b64encode(f.read()).decode("utf-8")
 
-    vlm = ChatOllama(
-        model="qwen2.5vl:7b",
-        num_ctx=8192,
-        temperature=0.1,
-        num_predict=1024,
-        top_p=0.9,
-    )
-    # 4. build message with image + question
     message = HumanMessage(
         content=[
             {"type": "text", "text": question},
@@ -129,17 +136,9 @@ def analyze_image(image_path: str, question: str = "What is in this image?") -> 
 
 
 tools = [search_web, execute_code, analyze_image]
-# 1. initialize the LLM
-llm = ChatOllama(
-    model="qwen2.5:7b",
-    num_ctx=8192,
-    temperature=0.1,
-    num_predict=1024,
-    top_p=0.9,
-)
-
 llm_with_tools = llm.bind_tools(tools)
 
+# Define prompt template with tool instructions and examples
 prompt = ChatPromptTemplate.from_messages(
     [
         (
@@ -168,7 +167,7 @@ Examples of tool needed:
 )
 
 
-# 2. define the agent node
+# Define the agent node
 def agent_node(state: AgentState) -> dict:
     chain = prompt | llm_with_tools
     response = chain.invoke(
@@ -180,17 +179,23 @@ def agent_node(state: AgentState) -> dict:
     return {"messages": [response]}
 
 
+# Helper functions for graph logic
 def is_not_empty(content: str) -> bool:
     return bool(content and content.strip())
 
 
+# Decision functions for graph edges
 def should_use_tool(state: AgentState) -> str:
     last_message = state["messages"][-1]
     if last_message.tool_calls:
-        return "human_approval_node"
+        tool_name = last_message.tool_calls[0]["name"]
+        if tool_name == "execute_code":
+            return "human_approval_node"
+        return "tool_node"
     return "output_parser_node"
 
 
+# Decide if we need human approval (for code execution) or can directly call tool
 def should_execute_tool(state: AgentState) -> str:
     feedback = state.get("human_feedback", "")
     if feedback.lower().startswith("yes"):
@@ -198,6 +203,7 @@ def should_execute_tool(state: AgentState) -> str:
     return "agent_node"
 
 
+# Decide if we should retry the agent's response or end the graph execution
 def output_parser_node(state: AgentState) -> dict:
     last_message = state["messages"][-1]
     content = last_message.content
@@ -211,14 +217,28 @@ def output_parser_node(state: AgentState) -> dict:
     }
 
 
+# Node to get human approval before executing code tool
 def human_approval_node(state: AgentState) -> dict:
     last_message = state["messages"][-1]
     tool_call = last_message.tool_calls[0]
 
-    print(f"\nAgent wants to call: '{tool_call['name']}'")
-    print(f"With args: {tool_call['args']}\n")
+    tool_name = tool_call["name"]
+    tool_args = tool_call["args"]
 
-    human_response = interrupt("Approve this tool call? (yes/no + optional feedback): ")
+    print(f"\n{'='*50}")
+    print(f"Agent wants to call: '{tool_name}'")
+    print(f"{'='*50}")
+
+    if tool_name == "execute_code":
+        print("Code to execute:")
+        print("-" * 30)
+        # this fixes the \n display issue
+        print(tool_args.get("code", ""))
+        print("-" * 30)
+    else:
+        print(f"With args: {tool_args}")
+
+    human_response = interrupt("\nApprove? (yes/no + optional feedback): ")
 
     if human_response.lower().startswith("yes"):
         return {"human_feedback": human_response}
@@ -233,6 +253,7 @@ def human_approval_node(state: AgentState) -> dict:
         }
 
 
+# Decide if we should retry the agent's response or end the graph execution
 def should_retry(state: AgentState) -> str:
     if state["is_valid"]:
         return "end"
@@ -241,9 +262,9 @@ def should_retry(state: AgentState) -> str:
     return "retry"
 
 
+# Parse user input to extract image path if present, and clean the message for the agent
 def parse_user_input(user_input: str) -> tuple[str, str | None]:
     """Extract image path from user message if present."""
-    # look for a file path pattern
     match = re.search(r"(/[\w/.\-_]+\.(?:jpg|jpeg|png|gif|webp))", user_input)
     if match:
         image_path = match.group(1)
@@ -253,7 +274,7 @@ def parse_user_input(user_input: str) -> tuple[str, str | None]:
     return user_input, None
 
 
-# 3. build the graph
+# Build the graph
 graph = StateGraph(AgentState)
 graph.add_node("agent_node", agent_node)
 graph.add_node("output_parser_node", output_parser_node)
@@ -266,7 +287,6 @@ graph.add_conditional_edges(
     should_execute_tool,
     {"tool_node": "tool_node", "agent_node": "agent_node"},
 )
-
 graph.add_conditional_edges(
     "output_parser_node", should_retry, {"retry": "agent_node", "end": END}
 )
@@ -275,10 +295,12 @@ graph.add_conditional_edges(
     should_use_tool,
     {
         "human_approval_node": "human_approval_node",
+        "tool_node": "tool_node",
         "output_parser_node": "output_parser_node",
     },
 )
 
+# Run the agent
 if __name__ == "__main__":
     with SqliteSaver.from_conn_string("memory.db") as memory:
         app = graph.compile(checkpointer=memory)
