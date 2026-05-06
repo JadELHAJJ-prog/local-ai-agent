@@ -18,21 +18,42 @@ import os
 from datetime import date
 import re
 import base64
+from dotenv import load_dotenv
+import uuid
+
+
+def generate_thread_id() -> str:
+    return str(uuid.uuid4())
+
+
+load_dotenv()
+# models
+LLM_MODEL = os.getenv("LLM_MODEL", "qwen2.5:7b")
+VLM_MODEL = os.getenv("VLM_MODEL", "qwen2.5vl:7b")
+THREAD_ID = os.getenv("THREAD_ID", "main")
+SANDBOX_IMAGE = os.getenv("SANDBOX_IMAGE", "agent-sandbox")
+
+# hyperparameters
+NUM_CTX = int(os.getenv("NUM_CTX", "8192"))
+TEMPERATURE = float(os.getenv("TEMPERATURE", "0.1"))
+NUM_PREDICT = int(os.getenv("NUM_PREDICT", "1024"))
+TOP_P = float(os.getenv("TOP_P", "0.9"))
 
 # Define LLM and VLM
 llm = ChatOllama(
-    model="qwen2.5:7b",
-    num_ctx=8192,
-    temperature=0.1,
-    num_predict=1024,
-    top_p=0.9,
+    model=LLM_MODEL,
+    num_ctx=NUM_CTX,
+    temperature=TEMPERATURE,
+    num_predict=NUM_PREDICT,
+    top_p=TOP_P,
 )
+
 vlm = ChatOllama(
-    model="qwen2.5vl:7b",
-    num_ctx=8192,
-    temperature=0.1,
-    num_predict=1024,
-    top_p=0.9,
+    model=VLM_MODEL,
+    num_ctx=NUM_CTX,
+    temperature=TEMPERATURE,
+    num_predict=NUM_PREDICT,
+    top_p=TOP_P,
 )
 
 
@@ -63,7 +84,7 @@ def execute_code(code: str) -> str:
                 "0.5",
                 "-v",
                 f"{tmp_path}:/app/code.py:ro",
-                "agent-sandbox",
+                SANDBOX_IMAGE,
                 "python",
                 "/app/code.py",
             ],
@@ -311,17 +332,27 @@ graph.add_conditional_edges(
 if __name__ == "__main__":
     with SqliteSaver.from_conn_string("memory.db") as memory:
         app = graph.compile(checkpointer=memory)
-        config = {"configurable": {"thread_id": "test-003"}}
+
+        print("=== Bubbles AI Agent ===")
+        print("1. Start new conversation")
+        print("2. Continue previous conversation")
+        choice = input("Choose (1/2): ").strip()
+
+        if choice == "2":
+            thread_id = THREAD_ID  # load from .env
+        else:
+            thread_id = str(uuid.uuid4())  # fresh session
+            print(f"New session started: {thread_id}")
+            print(f"Save this ID to continue later: {thread_id}\n")
+
+        config = {"configurable": {"thread_id": thread_id}}
         print("Agent ready. Type 'exit' to quit.\n")
         while True:
             user_input = input("You: ")
             if user_input.lower() == "exit":
                 break
-
             print("Agent: ", end="", flush=True)
-
             text, image_path = parse_user_input(user_input)
-
             if image_path:
                 # inject image path into message so agent knows to use analyze_image
                 message = HumanMessage(
