@@ -11,3 +11,4 @@ class AgentState(TypedDict):
     is_valid: bool
     human_feedback: Optional[str]  # stores human's yes/no + comments
     code_generated: bool
+    input_type: str

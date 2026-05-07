@@ -3,3 +3,4 @@
 *__pycache__*
 memory.db
 .env
+.last_session

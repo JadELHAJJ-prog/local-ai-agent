@@ -21,10 +21,25 @@ import re
 import base64
 from dotenv import load_dotenv
 import uuid
+import json
 
 
 def generate_thread_id() -> str:
     return str(uuid.uuid4())
+
+
+def save_last_thread(thread_id: str):
+    with open(".last_session", "w") as f:
+        json.dump({"thread_id": thread_id}, f)
+
+
+def load_last_thread() -> str:
+    try:
+        with open(".last_session") as f:
+            return json.load(f)["thread_id"]
+    except:
+        print("No previous session found. Starting new session.")
+        return str(uuid.uuid4())
 
 
 load_dotenv()
@@ -32,7 +47,6 @@ load_dotenv()
 LLM_MODEL = os.getenv("LLM_MODEL", "qwen2.5:7b")
 VLM_MODEL = os.getenv("VLM_MODEL", "qwen2.5vl:7b")
 CODER_MODEL = os.getenv("CODER_MODEL", "qwen2.5-coder:7b")
-THREAD_ID = os.getenv("THREAD_ID", "main")
 SANDBOX_IMAGE = os.getenv("SANDBOX_IMAGE", "agent-sandbox")
 
 # hyperparameters
@@ -66,6 +80,119 @@ coder_llm = ChatOllama(
     num_predict=2048,
     top_p=TOP_P,
 )
+
+CODE_PATTERNS = [
+    # write variants
+    "write code",
+    "write a code",
+    "write me a code",
+    "write for me",
+    "write me a",
+    "write a script",
+    "write a program",
+    "write a function",
+    "write a class",
+    "write a module",
+    "write a snippet",
+    # create variants
+    "create code",
+    "create a code",
+    "create a script",
+    "create a program",
+    "create a function",
+    "create a class",
+    "create a module",
+    # make variants
+    "make a code",
+    "make a script",
+    "make a program",
+    "make a function",
+    "make me a",
+    "make a class",
+    # give variants
+    "give me code",
+    "give me a code",
+    "give me a script",
+    "give me a program",
+    "give me a function",
+    # generate variants
+    "generate code",
+    "generate a code",
+    "generate a script",
+    "generate a function",
+    # build variants
+    "build a",
+    "build me a",
+    "build a script",
+    "build a program",
+    # implement variants
+    "implement",
+    "implement a",
+    "implement the",
+    "implement this",
+    # execution variants
+    "run",
+    "run this",
+    "run a",
+    "execute",
+    "execute this",
+    "execute a",
+    "test this code",
+    "test this script",
+    # other common patterns
+    "write and run",
+    "code for",
+    "script for",
+    "program for",
+    "function for",
+    "code to",
+    "script to",
+    "program to",
+    "show me the code",
+    "can you code",
+    "can you write",
+    "i need code",
+    "i need a script",
+    "i need a program",
+    "python code",
+    "python script",
+    "python function",
+]
+
+APPROVAL_PHRASES = [
+    "yes",
+    "i like",
+    "looks good",
+    "approved",
+    "ok",
+    "good",
+    "run it",
+    "execute",
+]
+
+
+def input_router_node(state: AgentState) -> dict:
+    last_message = state["messages"][-1]
+    content = last_message.content.lower()
+
+    # check for media path
+    if "[file provided at path:" in content or "[image provided at path:" in content:
+        return {"input_type": "media"}
+
+    # check for code request
+    if any(pattern in content for pattern in CODE_PATTERNS):
+        return {"input_type": "code"}
+
+    return {"input_type": "general"}
+
+
+def should_route(state: AgentState) -> str:
+    input_type = state.get("input_type", "general")
+    if input_type == "code":
+        return "code_generation_node"
+    if input_type == "media":
+        return "tool_node"
+    return "agent_node"
 
 
 # Define tools
@@ -309,17 +436,7 @@ def should_use_tool(state: AgentState) -> str:
 # Decide if we need human approval (for code execution) or can directly call tool
 def should_execute_tool(state: AgentState) -> str:
     feedback = state.get("human_feedback", "").lower()
-    approval_phrases = [
-        "yes",
-        "i like",
-        "looks good",
-        "approved",
-        "ok",
-        "good",
-        "run it",
-        "execute",
-    ]
-    if any(phrase in feedback for phrase in approval_phrases):
+    if any(phrase in feedback for phrase in APPROVAL_PHRASES):
         return "tool_node"
     return "agent_node"
 
@@ -361,11 +478,14 @@ def human_approval_node(state: AgentState) -> dict:
 
     human_response = interrupt("\nApprove? (yes/no + optional feedback): ")
 
-    if human_response.lower().startswith("yes"):
+    if human_response.lower().startswith("yes") or any(
+        phrase in human_response.lower() for phrase in APPROVAL_PHRASES
+    ):
         return {"human_feedback": human_response, "code_generated": False}
     else:
         return {
             "human_feedback": human_response,
+            "code_generated": False,
             "messages": [
                 HumanMessage(
                     content=f"The code was rejected. User feedback: '{human_response}'. "
@@ -401,10 +521,43 @@ def parse_user_input(user_input: str) -> tuple[str, str | None]:
 # Node to generate code using the coder model
 def code_generation_node(state: AgentState) -> dict:
     last_message = state["messages"][-1]
+
+    # coming from input_router — no tool_calls
+    if not hasattr(last_message, "tool_calls") or not last_message.tool_calls:
+        user_request = last_message.content
+        code_prompt = f"""You are an expert Python developer.
+Write Python code for this task. Return ONLY raw Python code, no markdown, no explanation:
+
+{user_request}"""
+
+        response = coder_llm.invoke([HumanMessage(content=code_prompt)])
+        improved_code = response.content
+        if "```python" in improved_code:
+            improved_code = improved_code.split("```python")[1].split("```")[0].strip()
+        elif "```" in improved_code:
+            improved_code = improved_code.split("```")[1].split("```")[0].strip()
+
+        import uuid as _uuid
+
+        new_message = AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "execute_code",
+                    "args": {"code": improved_code},
+                    "id": f"call-{_uuid.uuid4().hex[:8]}",
+                    "type": "tool_call",
+                }
+            ],
+        )
+        return {"messages": [new_message], "code_generated": True}
+
+    # coming from agent_node — has tool_calls, improve existing code
     tool_call = last_message.tool_calls[0]
     rough_code = tool_call["args"]["code"]
-    code_prompt = f"""You are an expert Python developer. 
-Improve and optimize this code. Return ONLY the raw Python code, no markdown, no explanation:
+    code_prompt = f"""You are an expert Python developer.
+Improve and optimize this code. Return ONLY raw Python code, no markdown, no explanation:
+
 {rough_code}"""
     response = coder_llm.invoke([HumanMessage(content=code_prompt)])
     improved_code = response.content
@@ -424,10 +577,7 @@ Improve and optimize this code. Return ONLY the raw Python code, no markdown, no
             }
         ],
     )
-    return {
-        "messages": [updated_message],
-        "code_generated": True,
-    }
+    return {"messages": [updated_message], "code_generated": True}
 
 
 # Build the graph
@@ -435,11 +585,21 @@ graph = StateGraph(AgentState)
 graph.add_node("agent_node", agent_node)
 graph.add_node("output_parser_node", output_parser_node)
 graph.add_node("tool_node", ToolNode(tools))
-graph.set_entry_point("agent_node")
+graph.set_entry_point("input_router_node")
+graph.add_node("input_router_node", input_router_node)
 graph.add_edge("tool_node", "agent_node")
 graph.add_node("human_approval_node", human_approval_node)
 graph.add_node("code_generation_node", code_generation_node)
 graph.add_edge("code_generation_node", "human_approval_node")
+graph.add_conditional_edges(
+    "input_router_node",
+    should_route,
+    {
+        "code_generation_node": "code_generation_node",
+        "tool_node": "tool_node",
+        "agent_node": "agent_node",
+    },
+)
 graph.add_conditional_edges(
     "human_approval_node",
     should_execute_tool,
@@ -474,12 +634,13 @@ if __name__ == "__main__":
             print("Invalid choice. Please enter 1 or 2.")
 
         if choice == "2":
-            thread_id = THREAD_ID  # load from .env
+            thread_id = load_last_thread()
+            print(f"Continuing session: {thread_id}\n")
         else:
-            thread_id = str(uuid.uuid4())  # fresh session
+            thread_id = str(uuid.uuid4())
             print(f"New session started: {thread_id}")
             print(f"Save this ID to continue later: {thread_id}\n")
-
+        save_last_thread(thread_id)
         config = {"configurable": {"thread_id": thread_id}}
         print("Agent ready. Type 'exit' to quit.\n")
         while True:
