@@ -10,3 +10,4 @@ class AgentState(TypedDict):
     retry_count: int
     is_valid: bool
     human_feedback: Optional[str]  # stores human's yes/no + comments
+    code_generated: bool

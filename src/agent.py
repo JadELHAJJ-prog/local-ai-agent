@@ -6,7 +6,7 @@ from langgraph.types import interrupt
 from langgraph.types import Command
 
 from langchain_ollama import ChatOllama
-from langchain_core.messages import HumanMessage, BaseMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.tools import tool
 
@@ -31,6 +31,7 @@ load_dotenv()
 # models
 LLM_MODEL = os.getenv("LLM_MODEL", "qwen2.5:7b")
 VLM_MODEL = os.getenv("VLM_MODEL", "qwen2.5vl:7b")
+CODER_MODEL = os.getenv("CODER_MODEL", "qwen2.5-coder:7b")
 THREAD_ID = os.getenv("THREAD_ID", "main")
 SANDBOX_IMAGE = os.getenv("SANDBOX_IMAGE", "agent-sandbox")
 
@@ -55,6 +56,14 @@ vlm = ChatOllama(
     num_ctx=32768,
     temperature=TEMPERATURE,
     num_predict=NUM_PREDICT,
+    top_p=TOP_P,
+)
+
+coder_llm = ChatOllama(
+    model=CODER_MODEL,
+    num_ctx=NUM_CTX,
+    temperature=0.1,
+    num_predict=2048,
     top_p=TOP_P,
 )
 
@@ -242,6 +251,10 @@ TOOLS — only use when explicitly needed:
 
 RULE: If the user says hi, hello, how are you, or asks a general question — respond directly. DO NOT use any tool.
 
+- If a tool call is rejected with feedback, you MUST call the 
+  tool again with the corrected approach. Never answer directly 
+  after a rejection.
+  
 Examples of NO tool needed:
 - "hi" -> just greet back
 - "what is 2+2" -> just answer
@@ -286,6 +299,8 @@ def should_use_tool(state: AgentState) -> str:
     if last_message.tool_calls:
         tool_name = last_message.tool_calls[0]["name"]
         if tool_name == "execute_code":
+            if not state.get("code_generated", False):
+                return "code_generation_node"
             return "human_approval_node"
         return "tool_node"
     return "output_parser_node"
@@ -293,8 +308,18 @@ def should_use_tool(state: AgentState) -> str:
 
 # Decide if we need human approval (for code execution) or can directly call tool
 def should_execute_tool(state: AgentState) -> str:
-    feedback = state.get("human_feedback", "")
-    if feedback.lower().startswith("yes"):
+    feedback = state.get("human_feedback", "").lower()
+    approval_phrases = [
+        "yes",
+        "i like",
+        "looks good",
+        "approved",
+        "ok",
+        "good",
+        "run it",
+        "execute",
+    ]
+    if any(phrase in feedback for phrase in approval_phrases):
         return "tool_node"
     return "agent_node"
 
@@ -337,13 +362,14 @@ def human_approval_node(state: AgentState) -> dict:
     human_response = interrupt("\nApprove? (yes/no + optional feedback): ")
 
     if human_response.lower().startswith("yes"):
-        return {"human_feedback": human_response}
+        return {"human_feedback": human_response, "code_generated": False}
     else:
         return {
             "human_feedback": human_response,
             "messages": [
                 HumanMessage(
-                    content=f"Tool call rejected. Human feedback: {human_response}. Please revise your approach."
+                    content=f"The code was rejected. User feedback: '{human_response}'. "
+                    f"Please rewrite the code addressing this feedback, then call execute_code again."
                 )
             ],
         }
@@ -372,6 +398,38 @@ def parse_user_input(user_input: str) -> tuple[str, str | None]:
     return user_input, None
 
 
+# Node to generate code using the coder model
+def code_generation_node(state: AgentState) -> dict:
+    last_message = state["messages"][-1]
+    tool_call = last_message.tool_calls[0]
+    rough_code = tool_call["args"]["code"]
+    code_prompt = f"""You are an expert Python developer. 
+Improve and optimize this code. Return ONLY the raw Python code, no markdown, no explanation:
+{rough_code}"""
+    response = coder_llm.invoke([HumanMessage(content=code_prompt)])
+    improved_code = response.content
+    if "```python" in improved_code:
+        improved_code = improved_code.split("```python")[1].split("```")[0].strip()
+    elif "```" in improved_code:
+        improved_code = improved_code.split("```")[1].split("```")[0].strip()
+    updated_message = AIMessage(
+        id=last_message.id,
+        content=last_message.content,
+        tool_calls=[
+            {
+                "name": "execute_code",
+                "args": {"code": improved_code},
+                "id": tool_call["id"],
+                "type": "tool_call",
+            }
+        ],
+    )
+    return {
+        "messages": [updated_message],
+        "code_generated": True,
+    }
+
+
 # Build the graph
 graph = StateGraph(AgentState)
 graph.add_node("agent_node", agent_node)
@@ -380,6 +438,8 @@ graph.add_node("tool_node", ToolNode(tools))
 graph.set_entry_point("agent_node")
 graph.add_edge("tool_node", "agent_node")
 graph.add_node("human_approval_node", human_approval_node)
+graph.add_node("code_generation_node", code_generation_node)
+graph.add_edge("code_generation_node", "human_approval_node")
 graph.add_conditional_edges(
     "human_approval_node",
     should_execute_tool,
@@ -392,6 +452,7 @@ graph.add_conditional_edges(
     "agent_node",
     should_use_tool,
     {
+        "code_generation_node": "code_generation_node",
         "human_approval_node": "human_approval_node",
         "tool_node": "tool_node",
         "output_parser_node": "output_parser_node",

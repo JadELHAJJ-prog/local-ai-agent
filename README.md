@@ -87,6 +87,7 @@ Pull the required models:
 ```bash
 ollama pull qwen2.5:7b       # LLM for reasoning and tool calling
 ollama pull qwen2.5vl:7b     # VLM for image and video analysis
+ollama pull qwen2.5-coder:7b # LLm for code generation
 ```
 
 ### 3. Set up Python environment
@@ -134,4 +135,5 @@ python agent.py
 |-----------|------|
 | LLM (Qwen2.5 7B) | ~4.7 GB |
 | VLM (Qwen2.5-VL 7B) | ~4.5 GB |
-| Both simultaneously | Not possible on 8GB — Ollama swaps automatically |
+| LLM (Qwen2.5-coder 7B) | ~4.7 GB |
+| All simultaneously | Not possible on 8GB — Ollama swaps automatically |
