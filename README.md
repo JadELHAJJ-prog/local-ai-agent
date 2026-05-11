@@ -27,11 +27,18 @@ The agent follows a structured flow: user input is routed by type, conversation 
 ```
 local-ai-agent/
 ├── research/
-│   └── research.md        # runtime comparison, framework evaluation, model selection
+│   └── research.md    # runtime comparison, framework evaluation, model selection
 ├── design/
-│   ├── design.md          # agent flow, component definitions, architecture
-│   └── architecture.png   # system architecture diagram
-└── src/                   # coming soon
+│   ├── design.md      # agent flow, component definitions, architecture
+│   └── architecture.png
+└── src/
+    ├── main.py        # entry point — session management and CLI loop
+    ├── graph.py       # LangGraph graph wiring and compilation
+    ├── nodes.py       # all node functions and edge decision functions
+    ├── tools.py       # web search, code execution, image and video analysis tools
+    ├── models.py      # llm, vlm, and coder_llm instantiation
+    ├── config.py      # env vars, model names, hyperparameters, pattern lists
+    └── state.py       # AgentState TypedDict
 ```
 
 ## Research and design
@@ -125,7 +132,7 @@ MAX_FRAMES=3
 
 ```bash
 cd src
-python agent.py
+python main.py
 ```
 
 ### VRAM requirements
