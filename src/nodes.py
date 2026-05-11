@@ -19,14 +19,14 @@ prompt = ChatPromptTemplate.from_messages(
             "system",
             """You are Bubbles, a helpful AI assistant. Today is {date}.
 
-TOOLS — only use when explicitly needed:
+TOOLS - only use when explicitly needed:
 - search_web: ONLY if user asks for news, current events, or real-time data. NEVER for greetings, math, coding, or general questions.
 - execute_code: ONLY if user says "run", "execute", or "test this code".
 - analyze_image: use when user provides an image path ending in .jpg .jpeg .png .gif .webp. Extract the path and analyze it.
 - analyze_video: use when user provides a video path ending in .mp4 .avi .mov .mkv. Extract the path and analyze it.
 - analyze_document: use when user provides a file path ending in .pdf .docx .xlsx .xls .csv. Extract the path and analyze it.
 
-RULE: If the user says hi, hello, how are you, or asks a general question — respond directly. DO NOT use any tool.
+RULE: If the user says hi, hello, how are you, or asks a general question - respond directly. DO NOT use any tool.
 
 - If a tool call is rejected with feedback, you MUST call the tool again with the corrected approach. Never answer directly after a rejection.
 Examples of NO tool needed:
@@ -114,7 +114,7 @@ def should_use_tool(state: AgentState) -> str:
 def code_generation_node(state: AgentState) -> dict:
     last_message = state["messages"][-1]
 
-    # coming from input_router — no tool_calls yet, generate from user request
+    # coming from input_router - no tool_calls yet, generate from user request
     if not hasattr(last_message, "tool_calls") or not last_message.tool_calls:
         user_request = last_message.content
         code_prompt = f"""You are an expert Python developer.
@@ -137,7 +137,7 @@ Write Python code for this task. Return ONLY raw Python code, no markdown, no ex
         )
         return {"messages": [new_message], "code_generated": True}
 
-    # coming from agent_node — improve existing code in the tool_call
+    # coming from agent_node - improve existing code in the tool_call
     tool_call = last_message.tool_calls[0]
     rough_code = tool_call["args"]["code"]
     code_prompt = f"""You are an expert Python developer.

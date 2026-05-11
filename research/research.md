@@ -38,7 +38,7 @@ VRAM needed = (params × 0.5) + 1 to 2 GB overhead
   also exposes an OpenAI-compatible REST API
 
 ### Decision rationale
-This project is a Personal AI Agent with Tools — an agent that 
+This project is a Personal AI Agent with Tools - an agent that 
 can browse the web, read files, run code and answer questions, 
 all running locally. Ollama reduces setup complexity compared to 
 vLLM and lets me focus on agent architecture rather than 
@@ -95,7 +95,7 @@ acceptable given the project timeline and business context.
 - Headroom: ~1 GB (tight)
 
 **Decision:** models will be loaded one at a time when possible, 
-or swapped depending on the task — text tasks use LLM only, 
+or swapped depending on the task - text tasks use LLM only, 
 vision tasks load VLM.
 
 
@@ -110,7 +110,7 @@ vision tasks load VLM.
 
 ### Final model choice update
 LLM switched from Llama 3.2 3B to Qwen2.5 7B after testing.
-Reason: Llama 3.2 3B unreliable for tool calling — confused 
+Reason: Llama 3.2 3B unreliable for tool calling - confused 
 tool format with natural language, called tools unnecessarily.
 Qwen2.5 7B handles tool calling correctly out of the box.
 VRAM: ~4.5GB, fits comfortably in 8GB budget.
