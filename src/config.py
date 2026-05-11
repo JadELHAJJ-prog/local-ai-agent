@@ -38,3 +38,11 @@ CODE_PATTERNS = [
 APPROVAL_PHRASES = [
     "yes", "i like", "looks good", "approved", "ok", "good", "run it", "execute",
 ]
+
+DOCUMENT_EXTENSIONS = {
+    ".pdf": "pdf",
+    ".docx": "docx",
+    ".xlsx": "xlsx",
+    ".xls": "xlsx",
+    ".csv": "csv",
+}

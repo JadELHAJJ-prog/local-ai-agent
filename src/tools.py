@@ -8,7 +8,7 @@ from langchain_core.messages import HumanMessage
 from langchain_core.tools import tool
 
 from config import SANDBOX_IMAGE, MAX_FRAMES
-from models import vlm
+from models import vlm, llm
 from ddgs import DDGS
 
 
@@ -42,12 +42,20 @@ def execute_code(code: str) -> str:
 
         result = subprocess.run(
             [
-                "docker", "run", "--rm",
-                "--network", "none",
-                "--memory", "128m",
-                "--cpus", "0.5",
-                "-v", f"{tmp_path}:/app/code.py:ro",
-                SANDBOX_IMAGE, "python", "/app/code.py",
+                "docker",
+                "run",
+                "--rm",
+                "--network",
+                "none",
+                "--memory",
+                "128m",
+                "--cpus",
+                "0.5",
+                "-v",
+                f"{tmp_path}:/app/code.py:ro",
+                SANDBOX_IMAGE,
+                "python",
+                "/app/code.py",
             ],
             capture_output=True,
             text=True,
@@ -83,7 +91,10 @@ def analyze_image(image_path: str, question: str = "What is in this image?") -> 
     message = HumanMessage(
         content=[
             {"type": "text", "text": question},
-            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}},
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
+            },
         ]
     )
 
@@ -125,7 +136,10 @@ def analyze_video(
             _, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
             base64_image = base64.b64encode(buffer.tobytes()).decode("utf-8")
             content.append(
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
+                }
             )
             frames_analyzed += 1
             print(f"Extracted frame {frames_analyzed}/{MAX_FRAMES}...", flush=True)
@@ -141,4 +155,85 @@ def analyze_video(
         cap.release()
 
 
-tools = [search_web, execute_code, analyze_image, analyze_video]
+@tool
+def analyze_document(file_path: str, question: str = "Summarize this document") -> str:
+    """Analyze a document file (PDF, Word, Excel, CSV).
+    Use when user provides a .pdf, .docx, .xlsx, .xls, or .csv file path.
+    Input should be the path to the document file."""
+
+    if not os.path.exists(file_path):
+        return f"Error: File not found at {file_path}"
+
+    ext = os.path.splitext(file_path)[1].lower()
+    extracted_text = ""
+
+    try:
+        if ext == ".pdf":
+            import pdfplumber
+
+            with pdfplumber.open(file_path) as pdf:
+                for page in pdf.pages:
+                    text = page.extract_text()
+                    if text:
+                        extracted_text += text + "\n"
+
+        elif ext == ".docx":
+            from docx import Document
+
+            doc = Document(file_path)
+            for para in doc.paragraphs:
+                if para.text.strip():
+                    extracted_text += para.text + "\n"
+            # also extract tables
+            for table in doc.tables:
+                for row in table.rows:
+                    row_text = " | ".join(cell.text.strip() for cell in row.cells)
+                    extracted_text += row_text + "\n"
+
+        elif ext in (".xlsx", ".xls"):
+            import openpyxl
+
+            wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
+            for sheet_name in wb.sheetnames:
+                sheet = wb[sheet_name]
+                extracted_text += f"Sheet: {sheet_name}\n"
+                for row in sheet.iter_rows(values_only=True):
+                    row_text = " | ".join(
+                        str(cell) if cell is not None else "" for cell in row
+                    )
+                    if row_text.strip(" |"):
+                        extracted_text += row_text + "\n"
+
+        elif ext == ".csv":
+            import pandas as pd
+
+            df = pd.read_csv(file_path)
+            extracted_text = df.to_string(index=False)
+
+        else:
+            return f"Error: Unsupported file type {ext}"
+
+    except Exception as e:
+        return f"Error reading file: {e}"
+
+    if not extracted_text.strip():
+        return "Error: Could not extract any text from this file."
+
+    # truncate if too long for context window
+    max_chars = 6000
+    if len(extracted_text) > max_chars:
+        extracted_text = extracted_text[:max_chars] + "\n... [truncated]"
+
+    # send to LLM with question
+    response = llm.invoke([HumanMessage(content=f"""Here is the content of the document:
+
+{extracted_text}
+
+Question: {question}
+
+Please answer the question based on the document content.""")])
+
+    return response.content or "No response generated."
+
+
+tools = [search_web, execute_code, analyze_image, analyze_video, analyze_document]

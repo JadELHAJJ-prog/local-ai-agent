@@ -33,7 +33,6 @@ def build_graph(memory: SqliteSaver):
         should_route,
         {
             "code_generation_node": "code_generation_node",
-            "tool_node": "tool_node",
             "agent_node": "agent_node",
         },
     )

@@ -7,7 +7,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langgraph.types import interrupt
 
 from state import AgentState
-from config import CODE_PATTERNS, APPROVAL_PHRASES
+from config import CODE_PATTERNS, APPROVAL_PHRASES, DOCUMENT_EXTENSIONS
 from models import llm, coder_llm
 from tools import tools
 
@@ -24,11 +24,11 @@ TOOLS — only use when explicitly needed:
 - execute_code: ONLY if user says "run", "execute", or "test this code".
 - analyze_image: use when user provides an image path ending in .jpg .jpeg .png .gif .webp. Extract the path and analyze it.
 - analyze_video: use when user provides a video path ending in .mp4 .avi .mov .mkv. Extract the path and analyze it.
+- analyze_document: use when user provides a file path ending in .pdf .docx .xlsx .xls .csv. Extract the path and analyze it.
 
 RULE: If the user says hi, hello, how are you, or asks a general question — respond directly. DO NOT use any tool.
 
 - If a tool call is rejected with feedback, you MUST call the tool again with the corrected approach. Never answer directly after a rejection.
-
 Examples of NO tool needed:
 - "hi" -> just greet back
 - "what is 2+2" -> just answer
@@ -51,7 +51,8 @@ def trim_messages_window(messages: list, max_messages: int = 20) -> list:
 
 def parse_user_input(user_input: str) -> tuple[str, str | None]:
     match = re.search(
-        r"(/[\w/.\-_]+\.(?:jpg|jpeg|png|gif|webp|mp4|avi|mov|mkv))", user_input
+        r"(/[\w/.\-_]+\.(?:jpg|jpeg|png|gif|webp|mp4|avi|mov|mkv|pdf|docx|xlsx|xls|csv))",
+        user_input,
     )
     if match:
         image_path = match.group(1)
@@ -61,12 +62,15 @@ def parse_user_input(user_input: str) -> tuple[str, str | None]:
 
 
 # --- Router ---
-
 def input_router_node(state: AgentState) -> dict:
     last_message = state["messages"][-1]
     content = last_message.content.lower()
 
     if "[file provided at path:" in content or "[image provided at path:" in content:
+        # detect specific file type from path
+        for ext, doc_type in DOCUMENT_EXTENSIONS.items():
+            if ext in content:
+                return {"input_type": f"document_{doc_type}"}
         return {"input_type": "media"}
 
     if any(pattern in content for pattern in CODE_PATTERNS):
@@ -79,13 +83,10 @@ def should_route(state: AgentState) -> str:
     input_type = state.get("input_type", "general")
     if input_type == "code":
         return "code_generation_node"
-    if input_type == "media":
-        return "tool_node"
     return "agent_node"
 
 
 # --- Agent ---
-
 def agent_node(state: AgentState) -> dict:
     chain = prompt | llm_with_tools
     response = chain.invoke(
@@ -110,7 +111,6 @@ def should_use_tool(state: AgentState) -> str:
 
 
 # --- Code generation ---
-
 def code_generation_node(state: AgentState) -> dict:
     last_message = state["messages"][-1]
 
@@ -171,7 +171,6 @@ def _strip_markdown(text: str) -> str:
 
 
 # --- Human approval ---
-
 def human_approval_node(state: AgentState) -> dict:
     last_message = state["messages"][-1]
     tool_call = last_message.tool_calls[0]
@@ -219,7 +218,6 @@ def should_execute_tool(state: AgentState) -> str:
 
 
 # --- Output parser ---
-
 def output_parser_node(state: AgentState) -> dict:
     last_message = state["messages"][-1]
     is_valid = bool(last_message.content and last_message.content.strip())

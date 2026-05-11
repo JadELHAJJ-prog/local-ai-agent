@@ -1,10 +1,12 @@
 import json
+import os
 import uuid
 
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
 
+from config import DOCUMENT_EXTENSIONS
 from graph import build_graph
 from nodes import parse_user_input
 
@@ -57,8 +59,10 @@ if __name__ == "__main__":
             text, image_path = parse_user_input(user_input)
 
             if image_path:
+                ext = os.path.splitext(image_path)[1].lower()
+                label = "file" if ext in DOCUMENT_EXTENSIONS else "image"
                 message = HumanMessage(
-                    content=f"{text} [image provided at path: {image_path}]"
+                    content=f"{text} [{label} provided at path: {image_path}]"
                 )
             else:
                 message = HumanMessage(content=text)
