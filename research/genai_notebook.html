@@ -1,0 +1,1365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gen AI Intensive — Course Notebook</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0d0f;
+    --surface: #141416;
+    --surface2: #1a1a1e;
+    --surface3: #222228;
+    --border: #2a2a32;
+    --border2: #333340;
+    --text: #e8e6f0;
+    --muted: #7a788a;
+    --accent: #7f6ef5;
+    --accent2: #a594ff;
+    --green: #3ecf8e;
+    --amber: #f5a623;
+    --red: #f56565;
+    --blue: #4da6ff;
+    --pink: #e879a0;
+    --d1: #7f6ef5;
+    --d2: #4da6ff;
+    --d3: #3ecf8e;
+    --d4: #f5a623;
+    --d5: #e879a0;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ── LAYOUT ── */
+  .shell { display: flex; min-height: 100vh; }
+
+  /* SIDEBAR */
+  .sidebar {
+    width: 260px;
+    flex-shrink: 0;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    position: fixed;
+    top: 0; left: 0;
+    height: 100vh;
+    overflow-y: auto;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sidebar-header {
+    padding: 24px 20px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar-logo {
+    font-family: 'Playfair Display', serif;
+    font-size: 17px;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  .sidebar-sub {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .search-wrap {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .search-input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 7px 10px;
+    font-size: 12px;
+    font-family: 'DM Sans', sans-serif;
+    outline: none;
+  }
+
+  .search-input::placeholder { color: var(--muted); }
+  .search-input:focus { border-color: var(--accent); }
+
+  .nav-group { padding: 12px 0; border-bottom: 1px solid var(--border); }
+
+  .nav-group-label {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 0 16px 8px;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 16px;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 13px;
+    transition: all 0.15s;
+    border-left: 2px solid transparent;
+  }
+
+  .nav-item:hover { color: var(--text); background: var(--surface2); }
+
+  .nav-item.active {
+    color: var(--text);
+    background: var(--surface2);
+  }
+
+  .nav-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .progress-section {
+    padding: 16px;
+    margin-top: auto;
+    border-top: 1px solid var(--border);
+  }
+
+  .progress-label {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .progress-track {
+    height: 3px;
+    background: var(--border2);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--green));
+    border-radius: 3px;
+    transition: width 0.5s;
+  }
+
+  /* MAIN */
+  .main {
+    margin-left: 260px;
+    flex: 1;
+    min-height: 100vh;
+  }
+
+  .topbar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+
+  .topbar-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 20px;
+    color: var(--text);
+  }
+
+  .topbar-badge {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+  }
+
+  .content { padding: 40px; max-width: 900px; }
+
+  /* ── PANELS ── */
+  .panel { display: none; animation: fadeIn 0.2s ease; }
+  .panel.active { display: block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ── SECTION HERO ── */
+  .day-hero {
+    border-radius: 12px;
+    padding: 32px;
+    margin-bottom: 32px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .day-hero::before {
+    content: '';
+    position: absolute;
+    top: -40px; right: -40px;
+    width: 200px; height: 200px;
+    border-radius: 50%;
+    opacity: 0.06;
+  }
+
+  .day-hero .day-num {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    opacity: 0.7;
+  }
+
+  .day-hero h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 10px;
+  }
+
+  .day-hero p {
+    font-size: 14px;
+    opacity: 0.8;
+    max-width: 540px;
+    line-height: 1.65;
+  }
+
+  /* ── CONCEPT CARDS ── */
+  .section-title {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 32px 0 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .cards-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 24px;
+  }
+
+  .cards-grid.three { grid-template-columns: 1fr 1fr 1fr; }
+  .cards-grid.one { grid-template-columns: 1fr; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 20px;
+    transition: border-color 0.15s;
+  }
+
+  .card:hover { border-color: var(--border2); }
+
+  .card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .card-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.3;
+  }
+
+  .card-abbr {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .card-body {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.65;
+  }
+
+  .card-body strong { color: var(--text); font-weight: 500; }
+  .card-body code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    background: var(--surface2);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: var(--accent2);
+  }
+
+  .card-example {
+    margin-top: 10px;
+    background: var(--surface2);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 12px;
+    color: var(--muted);
+    border-left: 2px solid var(--accent);
+    line-height: 1.6;
+  }
+
+  .card-example .ex-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    font-weight: 500;
+    margin-bottom: 4px;
+  }
+
+  /* ── COMPARISON TABLE ── */
+  .compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 24px;
+    font-size: 13px;
+  }
+
+  .compare-table th {
+    text-align: left;
+    padding: 10px 14px;
+    background: var(--surface2);
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .compare-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    color: var(--text);
+    line-height: 1.55;
+  }
+
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table tr:hover td { background: var(--surface); }
+
+  /* ── PIPELINE FLOW ── */
+  .pipeline {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin: 16px 0 24px;
+    padding: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+
+  .pipe-node {
+    padding: 6px 13px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .pipe-arrow { color: var(--muted); font-size: 14px; }
+
+  /* ── TAG / BADGE ── */
+  .tag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 20px;
+    margin: 2px 3px 2px 0;
+  }
+
+  /* ── CALLOUT ── */
+  .callout {
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin: 16px 0;
+    font-size: 13px;
+    line-height: 1.65;
+    border-left: 3px solid;
+  }
+
+  .callout strong { color: var(--text); }
+
+  .callout-info { background: #1a1f2e; border-color: var(--blue); color: #8ab8e8; }
+  .callout-warn { background: #1f1a0e; border-color: var(--amber); color: #c99a50; }
+  .callout-success { background: #0f1f17; border-color: var(--green); color: #5fc99a; }
+  .callout-tip { background: #1a1528; border-color: var(--accent); color: #9e8ff5; }
+
+  /* ── ACRONYM ROW ── */
+  .acronym-row {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+
+  .acronym-row:last-child { border-bottom: none; }
+
+  .acronym-code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+    min-width: 100px;
+    flex-shrink: 0;
+  }
+
+  .acronym-full { color: var(--text); font-weight: 500; min-width: 200px; flex-shrink: 0; }
+  .acronym-def { color: var(--muted); flex: 1; line-height: 1.55; }
+
+  /* Day colours */
+  .d1-accent { color: var(--d1); }
+  .d2-accent { color: var(--d2); }
+  .d3-accent { color: var(--d3); }
+  .d4-accent { color: var(--d4); }
+  .d5-accent { color: var(--d5); }
+
+  /* Colour helpers */
+  .bg-d1 { background: rgba(127,110,245,0.08); border-color: rgba(127,110,245,0.25); }
+  .bg-d2 { background: rgba(77,166,255,0.08); border-color: rgba(77,166,255,0.25); }
+  .bg-d3 { background: rgba(62,207,142,0.08); border-color: rgba(62,207,142,0.25); }
+  .bg-d4 { background: rgba(245,166,35,0.08); border-color: rgba(245,166,35,0.25); }
+  .bg-d5 { background: rgba(232,121,160,0.08); border-color: rgba(232,121,160,0.25); }
+
+  .t-d1 { background: rgba(127,110,245,0.15); color: #a594ff; }
+  .t-d2 { background: rgba(77,166,255,0.15); color: #7cbfff; }
+  .t-d3 { background: rgba(62,207,142,0.15); color: #5fdfa8; }
+  .t-d4 { background: rgba(245,166,35,0.15); color: #f5c060; }
+  .t-d5 { background: rgba(232,121,160,0.15); color: #f09abe; }
+  .t-mono { background: var(--surface2); color: var(--accent2); }
+
+  /* HIGHLIGHT NUMBERS */
+  .big-stat {
+    font-family: 'Playfair Display', serif;
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+
+  .stats-row {
+    display: flex;
+    gap: 24px;
+    margin: 16px 0 24px;
+    flex-wrap: wrap;
+  }
+
+  .stat-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    min-width: 120px;
+  }
+
+  /* SEARCH HIGHLIGHT */
+  mark { background: rgba(127,110,245,0.35); color: var(--text); border-radius: 2px; padding: 0 2px; }
+
+  /* SCROLL */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+  /* RESPONSIVE */
+  @media (max-width: 800px) {
+    .sidebar { width: 220px; }
+    .main { margin-left: 220px; }
+    .content { padding: 24px; }
+    .cards-grid, .cards-grid.three { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- ══ SIDEBAR ══ -->
+<nav class="sidebar">
+  <div class="sidebar-header">
+    <div class="sidebar-logo">Gen AI Intensive</div>
+    <div class="sidebar-sub">Course Notebook</div>
+  </div>
+
+  <div class="search-wrap">
+    <input class="search-input" id="searchInput" type="text" placeholder="Search concepts…" oninput="doSearch(this.value)">
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-group-label">Navigation</div>
+    <div class="nav-item active" onclick="show('overview')">
+      <div class="nav-dot" style="background:#888"></div>Overview
+    </div>
+    <div class="nav-item" onclick="show('acronyms')">
+      <div class="nav-dot" style="background:#888"></div>All Acronyms
+    </div>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-group-label">Course Days</div>
+    <div class="nav-item" onclick="show('day1')">
+      <div class="nav-dot" style="background:var(--d1)"></div>LLMs & Prompting
+    </div>
+    <div class="nav-item" onclick="show('day2')">
+      <div class="nav-dot" style="background:var(--d2)"></div>Embeddings & RAG
+    </div>
+    <div class="nav-item" onclick="show('day3')">
+      <div class="nav-dot" style="background:var(--d3)"></div>AI Agents
+    </div>
+    <div class="nav-item" onclick="show('day4')">
+      <div class="nav-dot" style="background:var(--d4)"></div>Domain LLMs
+    </div>
+    <div class="nav-item" onclick="show('day5')">
+      <div class="nav-dot" style="background:var(--d5)"></div>MLOps
+    </div>
+  </div>
+</nav>
+
+<!-- ══ MAIN CONTENT ══ -->
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title" id="topbarTitle">Overview</div>
+  </div>
+
+  <div class="content" id="mainContent">
+
+    <!-- ══════════════════════════════════════════
+         OVERVIEW
+    ══════════════════════════════════════════ -->
+    <div class="panel active" id="p-overview">
+      <div class="day-hero bg-d1" style="border:1px solid rgba(127,110,245,0.2)">
+        <div class="day-num d1-accent">Google × Kaggle</div>
+        <h1>Gen AI Intensive</h1>
+        <p>A complete course notebook. Every concept, every acronym, every technique. Use the sidebar to navigate, or search for any term.</p>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-block">
+          <div class="big-stat d2-accent">6</div>
+          <div class="stat-label">Whitepapers</div>
+        </div>
+        <div class="stat-block">
+          <div class="big-stat d3-accent">60+</div>
+          <div class="stat-label">Concepts</div>
+        </div>
+        <div class="stat-block">
+          <div class="big-stat d4-accent">40+</div>
+          <div class="stat-label">Acronyms</div>
+        </div>
+      </div>
+
+      <div class="section-title">What is covered</div>
+      <div class="cards-grid">
+        <div class="card bg-d1" style="cursor:pointer" onclick="show('day1')">
+          <div class="card-head">
+            <div class="card-title d1-accent">Foundational LLMs & Prompt Engineering</div>
+          </div>
+          <div class="card-body">Transformer architecture · Zero-shot, Few-shot, CoT, ReAct · Step-back, Tree-of-Thoughts · System/Role prompting · Temperature, Top-K, Top-P · RLHF</div>
+        </div>
+        <div class="card bg-d2" style="cursor:pointer" onclick="show('day2')">
+          <div class="card-head">
+            <div class="card-title d2-accent">Embeddings & Vector Stores</div>
+          </div>
+          <div class="card-body">Word2Vec · GloVe · SWIVEL · BERT · Cosine similarity · RAG pipeline · HNSW · ScaNN · ChromaDB · Pinecone · Contrastive loss · Dual encoder</div>
+        </div>
+        <div class="card bg-d3" style="cursor:pointer" onclick="show('day3')">
+          <div class="card-head">
+            <div class="card-title d3-accent">AI Agents</div>
+          </div>
+          <div class="card-body">Model + Tools + Orchestration · ReAct loop · Extensions vs Functions · Data Stores · Multi-agent patterns · Targeted learning · LangSmith</div>
+        </div>
+        <div class="card bg-d4" style="cursor:pointer" onclick="show('day4')">
+          <div class="card-head">
+            <div class="card-title d4-accent">Domain-Specific LLMs</div>
+          </div>
+          <div class="card-body">Training pipeline · Continued pre-training · SFT · RLHF · RLAIF · LoRA · QLoRA · PEFT · Evaluation: ROUGE, BERTScore, Likert scale</div>
+        </div>
+        <div class="card bg-d5" style="cursor:pointer" onclick="show('day5')">
+          <div class="card-head">
+            <div class="card-title d5-accent">MLOps for Gen AI</div>
+          </div>
+          <div class="card-body">5-phase lifecycle · Prompted model component · Chain & Augment · CI/CD · Version control · Drift & skew detection · Lineage · Governance</div>
+        </div>
+        <div class="card" style="cursor:pointer" onclick="show('acronyms')">
+          <div class="card-head">
+            <div class="card-title">📖 All Acronyms Reference</div>
+          </div>
+          <div class="card-body">Every abbreviation in the course expanded and defined — LLM, VLM, RAG, ANN, RLHF, PEFT, LoRA, QLoRA, SFT, ROUGE, BERTScore, CoT, ToT, ReAct, APE…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════
+         ACRONYMS
+    ══════════════════════════════════════════ -->
+    <div class="panel" id="p-acronyms">
+      <div class="day-hero" style="background:var(--surface);border:1px solid var(--border)">
+        <div class="day-num" style="color:var(--muted)">Reference</div>
+        <h1>All Acronyms</h1>
+        <p>Every abbreviation used — expanded and defined.</p>
+      </div>
+
+      <div class="section-title">Model Architecture</div>
+      <div class="card cards-grid one">
+        <div style="padding:4px 0">
+          <div class="acronym-row"><span class="acronym-code t-d1">LLM</span><span class="acronym-full">Large Language Model</span><span class="acronym-def">A neural network trained on massive text corpora to predict next tokens. Powers ChatGPT, Gemini, Claude, Llama.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d2">VLM</span><span class="acronym-full">Vision Language Model</span><span class="acronym-def">A multimodal model that processes both images and text. Examples: GPT-4V, Gemini, Qwen2.5-VL, LLaVA.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d1">BERT</span><span class="acronym-full">Bidirectional Encoder Representations from Transformers</span><span class="acronym-def">Encoder-only transformer model by Google (2018). Trained with masked language modelling. Cannot generate text — great for understanding tasks.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d1">GPT</span><span class="acronym-full">Generative Pre-trained Transformer</span><span class="acronym-def">Decoder-only transformer by OpenAI. Trained to predict next token. GPT-1 (2018) → GPT-2 → GPT-3 → GPT-4.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d4">MoE</span><span class="acronym-full">Mixture of Experts</span><span class="acronym-def">Architecture where only a subset of "expert" layers activates per token. More efficient at scale. Used in Gemini and GPT-4.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d1">TPU</span><span class="acronym-full">Tensor Processing Unit</span><span class="acronym-def">Google's custom ML accelerator chip. Used to train and serve Gemini models. Faster and more efficient than GPUs for matrix operations.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d2">BoW</span><span class="acronym-full">Bag-of-Words</span><span class="acronym-def">Early text representation — count word frequencies, ignore order. TF-IDF and LSA use BoW. Fatal flaw: "dog bites man" = "man bites dog".</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d2">NLP</span><span class="acronym-full">Natural Language Processing</span><span class="acronym-def">The field of AI dealing with understanding and generating human language. Encompasses text classification, translation, summarisation, Q&A, and more.</span></div>
+        </div>
+      </div>
+
+      <div class="section-title">Prompting Techniques</div>
+      <div class="card cards-grid one">
+        <div style="padding:4px 0">
+          <div class="acronym-row"><span class="acronym-code t-d1">CoT</span><span class="acronym-full">Chain-of-Thought</span><span class="acronym-def">Prompting technique: add "let's think step by step" or show worked reasoning traces. Forces intermediate steps before final answer.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d1">ToT</span><span class="acronym-full">Tree-of-Thoughts</span><span class="acronym-def">Generalises CoT: explore multiple reasoning branches simultaneously, score each, prune dead ends, backtrack. Best for problems with dead ends.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d1">ReAct</span><span class="acronym-full">Reason + Act</span><span class="acronym-def">Prompting framework: Thought → Action → Observation loop. Model alternates between reasoning and calling tools. Foundation of most agents.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d1">APE</span><span class="acronym-full">Automatic Prompt Engineering</span><span class="acronym-def">Using an LLM to generate and evaluate prompts automatically. "Write a prompt to generate X variations" → evaluate → iterate.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d2">NLI</span><span class="acronym-full">Natural Language Inference</span><span class="acronym-def">Task of determining whether a hypothesis can be logically inferred from a premise. Three labels: entailment, contradiction, neutral.</span></div>
+        </div>
+      </div>
+
+      <div class="section-title">Training Methods</div>
+      <div class="card cards-grid one">
+        <div style="padding:4px 0">
+          <div class="acronym-row"><span class="acronym-code t-d4">SFT</span><span class="acronym-full">Supervised Fine-Tuning</span><span class="acronym-def">Train a model on labelled (input, output) pairs to teach specific task behaviour. Cheaper than pre-training but requires quality labelled data.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d4">RLHF</span><span class="acronym-full">Reinforcement Learning from Human Feedback</span><span class="acronym-def">Three-step: humans rank responses → reward model trained on rankings → LLM fine-tuned with PPO to maximise reward. Produces helpful, safe models.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d4">RLAIF</span><span class="acronym-full">Reinforcement Learning from AI Feedback</span><span class="acronym-def">Same as RLHF but a larger "teacher" LLM generates preference labels instead of human annotators. Used in Constitutional AI (Anthropic).</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d4">PPO</span><span class="acronym-full">Proximal Policy Optimisation</span><span class="acronym-def">RL algorithm used in RLHF step 3 to fine-tune the LLM. Includes KL divergence penalty to prevent reward hacking.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d4">KL</span><span class="acronym-full">Kullback-Leibler Divergence</span><span class="acronym-def">Measures how much a probability distribution diverges from a reference. In RLHF, a KL penalty keeps the model from drifting too far from the SFT checkpoint.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d4">PEFT</span><span class="acronym-full">Parameter-Efficient Fine-Tuning</span><span class="acronym-def">Family of techniques that fine-tune only a small fraction of model weights. Includes LoRA, QLoRA, soft prompts, and adapters.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d4">LoRA</span><span class="acronym-full">Low-Rank Adaptation</span><span class="acronym-def">Freeze base model weights. Add two small matrices A and B. Train only A and B (~1% of parameters). Adapters are swappable without reloading the base model.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d4">QLoRA</span><span class="acronym-full">Quantised Low-Rank Adaptation</span><span class="acronym-def">LoRA on a 4-bit quantised base model. Enables fine-tuning 7B+ models on a single consumer GPU (8GB VRAM) with small accuracy tradeoff.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d4">RAFT</span><span class="acronym-full">Retrieval-Augmented Fine-Tuning</span><span class="acronym-def">Fine-tuning technique that combines document retrieval with fine-tuning data to improve domain-specific model performance.</span></div>
+        </div>
+      </div>
+
+      <div class="section-title">Retrieval & Embeddings</div>
+      <div class="card cards-grid one">
+        <div style="padding:4px 0">
+          <div class="acronym-row"><span class="acronym-code t-d2">RAG</span><span class="acronym-full">Retrieval-Augmented Generation</span><span class="acronym-def">Find relevant documents via semantic search → inject as context → LLM generates grounded answer. Solves hallucination + stale knowledge.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d2">ANN</span><span class="acronym-full">Approximate Nearest Neighbour</span><span class="acronym-def">Fast vector search algorithm that finds similar vectors without comparing all N. O(log N) vs O(N) for brute force. Small accuracy tradeoff for massive speed gain.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d2">HNSW</span><span class="acronym-full">Hierarchical Navigable Small Worlds</span><span class="acronym-def">Graph-based ANN algorithm. Hierarchical layers: long links at top (coarse), short links at bottom (precise). Traverses top→bottom. O(log N). Used by Pinecone, Weaviate.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d2">ScaNN</span><span class="acronym-full">Scalable Nearest Neighbours</span><span class="acronym-def">Google's ANN algorithm. Partition space → score only nearest partitions. Uses anisotropic quantization — prioritises preserving high-scoring vector distances. Powers Vertex AI Vector Search.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d2">LSH</span><span class="acronym-full">Locality Sensitive Hashing</span><span class="acronym-def">ANN technique: hash similar vectors to the same bucket, search only within matching buckets. Whitepaper analogy: finding houses by postal code.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d2">IVF</span><span class="acronym-full">Inverted File Index</span><span class="acronym-def">FAISS clustering method: partition vectors into clusters (Voronoi cells). At query time, search only the nearest clusters. √N clusters is the recommended heuristic.</span></div>
+        </div>
+      </div>
+
+      <div class="section-title">Evaluation Metrics</div>
+      <div class="card cards-grid one">
+        <div style="padding:4px 0">
+          <div class="acronym-row"><span class="acronym-code t-d4">ROUGE</span><span class="acronym-full">Recall-Oriented Understudy for Gisting Evaluation</span><span class="acronym-def">Measures n-gram overlap between output and reference. ROUGE-1 (unigrams), ROUGE-2 (bigrams), ROUGE-L (longest common subsequence). Misses valid paraphrases.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d4">BLEU</span><span class="acronym-full">Bilingual Evaluation Understudy</span><span class="acronym-def">Precision-weighted n-gram overlap metric. Originally for translation. Doesn't correlate well with human judgement for open-ended tasks.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d4">BERTScore</span><span class="acronym-full">BERT-based Similarity Score</span><span class="acronym-def">Computes cosine similarity between BERT embeddings of output and reference. Captures semantic similarity, not just word overlap. Best for paraphrasable domain outputs.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d4">USMLE</span><span class="acronym-full">United States Medical Licensing Examination</span><span class="acronym-def">Medical licensing exam used as AI benchmark. Pass mark ~60%. Med-PaLM: 67%. Med-PaLM 2: 86.5% (expert-level). Steps 1, 2, 3 cover basic science → clinical skills.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d5">AutoSxS</span><span class="acronym-full">Automated Side-by-Side</span><span class="acronym-def">LLM-as-judge pairwise evaluation: a larger model compares Response A vs B and picks the better one. Win rate is the primary quality signal between model/prompt versions.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d5">AUC</span><span class="acronym-full">Area Under the Curve</span><span class="acronym-def">Classification metric: area under ROC (Receiver Operating Characteristic) curve. AUC=1.0 is perfect, 0.5 is random. Used for binary classification tasks like malware detection.</span></div>
+        </div>
+      </div>
+
+      <div class="section-title">MLOps & Infrastructure</div>
+      <div class="card cards-grid one">
+        <div style="padding:4px 0">
+          <div class="acronym-row"><span class="acronym-code t-d5">MLOps</span><span class="acronym-full">Machine Learning Operations</span><span class="acronym-def">Practices for deploying and maintaining ML systems reliably at scale. Combines DevOps + ML. Covers versioning, CI/CD, monitoring, and governance.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d5">DevOps</span><span class="acronym-full">Development + Operations</span><span class="acronym-def">Practice of combining software development and IT operations. Emphasises automation, CI/CD, monitoring, and collaboration. MLOps extends DevOps to ML systems.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d5">CI/CD</span><span class="acronym-full">Continuous Integration / Continuous Delivery</span><span class="acronym-def">CI: automatically test code on every push. CD: automatically deploy tested code through environments to production. For Gen AI, adds eval gate and adversarial tests.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d5">IaC</span><span class="acronym-full">Infrastructure as Code</span><span class="acronym-def">Define and manage infrastructure (servers, databases, networks) using configuration files rather than manual setup. Enables reproducible environments.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d5">DVC</span><span class="acronym-full">Data Version Control</span><span class="acronym-def">Git-like versioning for large data files and ML experiments. Tracks dataset versions alongside code commits. Essential for RAG corpus lineage.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d5">OTel</span><span class="acronym-full">OpenTelemetry</span><span class="acronym-def">Open standard for distributed tracing, metrics, and logs. The whitepaper's recommended standard for Gen AI tracing. LangSmith implements compatible trace format.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d5">KV-cache</span><span class="acronym-full">Key-Value Cache</span><span class="acronym-def">Caches attention key-value pairs for prompt tokens that repeat (e.g. your system prompt). Dramatically speeds up inference when many requests share a prefix.</span></div>
+          <div class="acronym-row"><span class="acronym-code t-d3">MCP</span><span class="acronym-full">Model Context Protocol</span><span class="acronym-def">Open standard by Anthropic for connecting AI models to external tools and data sources. Enables standardised tool/extension integration.</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="p-day1">
+      <div class="day-hero bg-d1" style="border:1px solid rgba(127,110,245,0.2)">
+        <div class="day-num d1-accent">Whitepapers: Foundational LLMs + Prompt Engineering</div>
+        <h1>Foundational LLMs &<br>Prompt Engineering</h1>
+        <p>How transformer models work, how text is generated token by token, and every prompting technique from zero-shot to Tree-of-Thoughts. Also covers sampling parameters that control output randomness.</p>
+      </div>
+
+      <div class="section-title">The Transformer Pipeline</div>
+      <div class="pipeline">
+        <div class="pipe-node t-d1">Your text</div><div class="pipe-arrow">→</div>
+        <div class="pipe-node" style="background:var(--surface2);color:var(--text)">Tokenise</div><div class="pipe-arrow">→</div>
+        <div class="pipe-node" style="background:var(--surface2);color:var(--text)">Embed</div><div class="pipe-arrow">→</div>
+        <div class="pipe-node" style="background:var(--surface2);color:var(--text)">Attention layers</div><div class="pipe-arrow">→</div>
+        <div class="pipe-node" style="background:var(--surface2);color:var(--text)">Output logits</div><div class="pipe-arrow">→</div>
+        <div class="pipe-node" style="background:var(--surface2);color:var(--text)">Sample token</div><div class="pipe-arrow">→</div>
+        <div class="pipe-node t-d3">Repeat →</div>
+      </div>
+
+      <div class="section-title">Core Architecture Concepts</div>
+      <div class="cards-grid">
+        <div class="card">
+          <div class="card-head"><div class="card-title">Self-Attention</div><div class="card-abbr t-mono">Q · K · V</div></div>
+          <div class="card-body">Three matrices: <strong>Query</strong> (what am I looking for?), <strong>Key</strong> (what do I contain?), <strong>Value</strong> (what do I contribute?). Attention score = softmax(QK<sup>T</sup>/√d) × V. Lets every token attend to every other token.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Multi-Head Attention</div></div>
+          <div class="card-body">Run self-attention <strong>h times in parallel</strong> with different projection matrices. Each "head" learns different relationship patterns. Outputs are concatenated and projected. More heads = richer representation.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Encoder vs Decoder</div></div>
+          <div class="card-body"><strong>Encoder</strong> (BERT): reads full sequence bidirectionally → good for understanding. <strong>Decoder</strong> (GPT, Gemini): generates left-to-right, masked attention → good for generation. Encoder-decoder (T5): both, for seq2seq tasks.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Mixture of Experts</div><div class="card-abbr t-mono">MoE</div></div>
+          <div class="card-body">Instead of activating all model parameters for every token, a <strong>router</strong> selects only a subset of "expert" layers. More efficient at scale — same quality for less compute per token. Used in Gemini and GPT-4.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Residual Connections</div></div>
+          <div class="card-body">Add the input of a layer directly to its output: <code>output = layer(x) + x</code>. Prevents vanishing gradient problem during training. Allows very deep networks (100s of layers) to train stably.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Layer Normalisation</div></div>
+          <div class="card-body">Normalises activations within each layer to have mean≈0, std≈1. Stabilises training, allows higher learning rates. Applied before or after attention blocks (pre-norm is more common in modern LLMs).</div>
+        </div>
+      </div>
+
+      <div class="section-title">Prompting Techniques — ordered by power</div>
+      <div class="cards-grid">
+        <div class="card bg-d1">
+          <div class="card-head"><div class="card-title d1-accent">Zero-shot</div></div>
+          <div class="card-body">Ask the model a task with <strong>no examples</strong>. The model answers from its training knowledge alone. Works for simple, well-defined tasks. Cheapest and fastest. Fails on complex reasoning.</div>
+          <div class="card-example"><div class="ex-label">Example prompt</div>"Classify this review as POSITIVE, NEGATIVE, or NEUTRAL: 'Great product!'"</div>
+        </div>
+        <div class="card bg-d1">
+          <div class="card-head"><div class="card-title d1-accent">Few-shot</div></div>
+          <div class="card-body">Provide <strong>2–5 worked examples</strong> before the actual task. Model learns format and style from examples. Good for consistency. More expensive (uses tokens for examples).</div>
+          <div class="card-example"><div class="ex-label">Structure</div>Q: [example 1] → A: [answer 1]<br>Q: [example 2] → A: [answer 2]<br>Q: [actual task] → A: [model completes]</div>
+        </div>
+        <div class="card bg-d1">
+          <div class="card-head"><div class="card-title d1-accent">Chain-of-Thought (CoT)</div><div class="card-abbr t-d1">CoT</div></div>
+          <div class="card-body">Add <strong>"Let's think step by step"</strong> or show reasoning traces in examples. Model produces intermediate reasoning steps before the final answer. Dramatically improves accuracy on multi-step problems.
+          <br><br><strong>Key insight:</strong> each reasoning step constrains the next — model can't skip to a wrong answer via pattern matching.</div>
+          <div class="card-example"><div class="ex-label">Classic example</div>"When I was 3 my partner was 3× my age. I'm now 20. How old is my partner?"<br>Zero-shot: 63 ✗ | CoT: Step 1→9, Step 2→gap=6, Step 3→26 ✓</div>
+        </div>
+        <div class="card bg-d1">
+          <div class="card-head"><div class="card-title d1-accent">Self-Consistency</div></div>
+          <div class="card-body">Run the <strong>same CoT prompt N times</strong> at high temperature. Extract the answer from each. Take the <strong>majority vote</strong>. Gives a pseudo-probability of correctness. More reliable than a single CoT run.</div>
+          <div class="card-example"><div class="ex-label">When to use</div>When CoT gives inconsistent answers across runs — ambiguous problems, edge cases, or high-stakes decisions.</div>
+        </div>
+        <div class="card bg-d1">
+          <div class="card-head"><div class="card-title d1-accent">Step-back Prompting</div></div>
+          <div class="card-body">Two API calls: <strong>Call 1</strong>: ask a broader, general version of the question. <strong>Call 2</strong>: inject the answer from Call 1 as context, then ask the original specific question. Surfaces deeper knowledge.</div>
+          <div class="card-example"><div class="ex-label">Whitepaper example</div>Instead of "write an FPS level" → first ask "what are 5 great FPS settings?" → inject results → then write the level.</div>
+        </div>
+        <div class="card bg-d1">
+          <div class="card-head"><div class="card-title d1-accent">Tree-of-Thoughts</div><div class="card-abbr t-d1">ToT</div></div>
+          <div class="card-body">Generalises CoT: generate <strong>K candidate thoughts</strong> at each step, evaluate each (score as "sure / maybe / impossible"), prune low-scorers, continue only promising branches. Supports backtracking. O(K^depth) model calls.</div>
+          <div class="card-example"><div class="ex-label">When to use</div>Problems with dead ends: chess moves, logic puzzles, planning tasks. Not worth the cost for tasks with one correct reasoning path.</div>
+        </div>
+        <div class="card bg-d1">
+          <div class="card-head"><div class="card-title d1-accent">ReAct</div><div class="card-abbr t-d1">Reason + Act</div></div>
+          <div class="card-body">Interleaves reasoning and acting: <strong>Thought</strong> → <strong>Action</strong> (call a tool) → <strong>Observation</strong> (tool result) → next Thought. Loops until "Final Answer". The foundation of all tool-using agents.</div>
+          <div class="card-example"><div class="ex-label">Loop</div>Thought: I need to search... → Action: Search["..."] → Observation: result → Thought: Now I know... → Final Answer</div>
+        </div>
+        <div class="card bg-d1">
+          <div class="card-head"><div class="card-title d1-accent">System / Role / Contextual Prompting</div></div>
+          <div class="card-body"><strong>System prompt</strong>: sets overarching task, rules, output format. Evaluated first — constrains everything.<br><strong>Role prompt</strong>: assigns persona ("You are a senior engineer…") — frames style and voice.<br><strong>Contextual prompt</strong>: dynamic per-request background (task-specific facts, documents).</div>
+        </div>
+      </div>
+
+      <div class="section-title">Sampling Parameters</div>
+      <table class="compare-table">
+        <tr><th>Parameter</th><th>What it controls</th><th>Low value</th><th>High value</th><th>Whitepaper defaults</th></tr>
+        <tr><td><strong>Temperature</strong></td><td>Reshapes the probability distribution before sampling. Low = sharper (top token more likely). High = flatter (rare tokens nearly as likely as common).</td><td>0 = greedy (deterministic)</td><td>>1 = chaotic / incoherent</td><td>Factual: 0 · Balanced: 0.2 · Creative: 0.9</td></tr>
+        <tr><td><strong>Top-K</strong></td><td>Hard count filter: keep only the K most probable tokens, discard the rest.</td><td>1 = greedy decoding</td><td>Vocab size = no filtering</td><td>Focused: 20 · Balanced: 30 · Creative: 40</td></tr>
+        <tr><td><strong>Top-P</strong><br><span style="font-size:11px;color:var(--muted)">(nucleus sampling)</span></td><td>Dynamic filter: accumulate probability until reaching P, cut off the rest. Adapts to model confidence.</td><td>0 ≈ only the top token</td><td>1 = no filtering</td><td>Focused: 0.9 · Balanced: 0.95 · Creative: 0.99</td></tr>
+      </table>
+
+      <div class="callout callout-info"><strong>Order of operations:</strong> Top-K and Top-P filter the candidate pool first → then Temperature samples from whatever survived. All three compound — use the whitepaper's recommended combinations rather than tuning one in isolation.</div>
+
+      <div class="section-title">Model Evolution Timeline</div>
+      <table class="compare-table">
+        <tr><th>Model</th><th>Year</th><th>Key innovation</th><th>Architecture</th></tr>
+        <tr><td><strong>GPT-1</strong></td><td>2018</td><td>First LLM to use transformer for generation at scale. Pre-training on BooksCorpus → fine-tune per task.</td><td>Decoder-only</td></tr>
+        <tr><td><strong>BERT</strong></td><td>2018</td><td>Bidirectional training with masked language modelling. First model to capture left+right context. Set NLU benchmarks.</td><td>Encoder-only</td></tr>
+        <tr><td><strong>GPT-2</strong></td><td>2019</td><td>10× scale-up (117M→1.5B params), 40GB WebText dataset. Showed emergent few-shot behaviour at scale.</td><td>Decoder-only</td></tr>
+        <tr><td><strong>GPT-3</strong></td><td>2020</td><td>175B parameters. Strong few-shot and zero-shot without fine-tuning. Coined the term "in-context learning".</td><td>Decoder-only</td></tr>
+        <tr><td><strong>Gemini</strong></td><td>2023+</td><td>Multimodal (text+image+audio+video), MoE architecture, 2M token context (Pro), trained on TPUv5e/TPUv4.</td><td>Decoder + MoE</td></tr>
+      </table>
+    </div>
+
+    <div class="panel" id="p-day2">
+      <div class="day-hero bg-d2" style="border:1px solid rgba(77,166,255,0.2)">
+        <div class="day-num d2-accent">Whitepaper: Embeddings & Vector Stores</div>
+        <h1>Embeddings &<br>Vector Stores</h1>
+        <p>How text becomes numbers, how similar meanings cluster in space, and how RAG pipelines let LLMs answer questions about your private documents. Covers word embeddings, similarity metrics, ANN search, and vector databases.</p>
+      </div>
+
+      <div class="section-title">Embedding Evolution</div>
+      <table class="compare-table">
+        <tr><th>Stage</th><th>Model</th><th>Key idea</th><th>Weakness fixed</th></tr>
+        <tr><td>Stage 1</td><td><strong>BoW / TF-IDF</strong></td><td>Count word frequencies. "dog bites man" = "man bites dog".</td><td>—</td></tr>
+        <tr><td>Stage 2a</td><td><strong>Word2Vec (2013)</strong></td><td>A word is defined by its neighbours. CBOW: predict middle from context. Skip-gram: predict context from middle.</td><td>Word order (vs BoW)</td></tr>
+        <tr><td>Stage 2b</td><td><strong>GloVe</strong></td><td>Co-occurrence matrix factorisation. Captures both local AND global corpus statistics.</td><td>Word2Vec's local-only window</td></tr>
+        <tr><td>Stage 2c</td><td><strong>SWIVEL</strong></td><td>Skip-Window Vectors with Negative Sampling. Distributed matrix factorisation. Faster than GloVe.</td><td>GloVe's training speed</td></tr>
+        <tr><td>Stage 3</td><td><strong>BERT / modern</strong></td><td>Context-aware: "bank" gets different vectors in "river bank" vs "bank account". Full sentence understanding.</td><td>Single static vector per word</td></tr>
+      </table>
+
+      <div class="section-title">Similarity Metrics — Figure 11 from whitepaper</div>
+      <div class="cards-grid three">
+        <div class="card">
+          <div class="card-head"><div class="card-title">Cosine Similarity</div><div class="card-abbr t-d2">Best for text</div></div>
+          <div class="card-body">Measures the <strong>angle</strong> between vectors. Ignores magnitude (length). 1.0 = same direction, 0 = perpendicular, -1 = opposite.<br><br>Formula: <code>cos(θ) = a·b / (‖a‖‖b‖)</code><br><br><strong>Why for text:</strong> long docs and short tweets about the same topic have different magnitudes but similar directions.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Dot Product</div><div class="card-abbr t-d2">High dims</div></div>
+          <div class="card-body">Projection of one vector onto another. Formula: <code>a · b = Σ aᵢbᵢ</code><br><br><strong>Equivalent to cosine similarity</strong> when vectors are normalised to length 1. Works better than euclidean for high-dimensional sparse data.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Euclidean (L2)</div><div class="card-abbr t-d2">Low dims</div></div>
+          <div class="card-body">Straight-line geometric distance between two points. Formula: <code>‖a − b‖₂</code><br><br>Intuitive but suffers from the <strong>"curse of dimensionality"</strong> — in high dimensions, all points become equidistant. Less useful for 768+ dim embeddings.</div>
+        </div>
+      </div>
+
+      <div class="callout callout-tip"><strong>Vector arithmetic (king − man + woman ≈ queen):</strong> embeddings capture relationships geometrically. The model never understood meaning — it just counted co-occurrences and the relationships emerged. This also means biases in training data appear in the embedding space.</div>
+
+      <div class="section-title">The RAG Pipeline</div>
+      <div class="pipeline" style="flex-direction:column;align-items:flex-start;gap:12px">
+        <div style="font-size:11px;color:var(--muted);font-weight:500;letter-spacing:0.06em">PHASE 1 — INDEXING (offline, done once)</div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <div class="pipe-node t-d2">Your docs</div><div class="pipe-arrow">→</div>
+          <div class="pipe-node" style="background:var(--surface2);color:var(--text)">Chunk into passages</div><div class="pipe-arrow">→</div>
+          <div class="pipe-node" style="background:var(--surface2);color:var(--text)">Embed each chunk</div><div class="pipe-arrow">→</div>
+          <div class="pipe-node" style="background:var(--surface2);color:var(--text)">Store in vector DB</div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);font-weight:500;letter-spacing:0.06em;margin-top:4px">PHASE 2 — QUERY TIME (real-time per request)</div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <div class="pipe-node t-d3">User query</div><div class="pipe-arrow">→</div>
+          <div class="pipe-node" style="background:var(--surface2);color:var(--text)">Embed query</div><div class="pipe-arrow">→</div>
+          <div class="pipe-node" style="background:var(--surface2);color:var(--text)">ANN search → top-k</div><div class="pipe-arrow">→</div>
+          <div class="pipe-node t-d4">Inject into prompt</div><div class="pipe-arrow">→</div>
+          <div class="pipe-node t-d1">LLM generates answer</div>
+        </div>
+      </div>
+
+      <div class="callout callout-warn"><strong>Critical:</strong> you must use the SAME embedding model for indexing and querying. Different models produce incompatible vector spaces — similarity scores become meaningless. Also: RAG reduces hallucination but does NOT eliminate it — return source chunks for coherence checking.</div>
+
+      <div class="section-title">ANN Search Algorithms</div>
+      <div class="cards-grid">
+        <div class="card">
+          <div class="card-head"><div class="card-title">LSH</div><div class="card-abbr t-d2">Locality Sensitive Hashing</div></div>
+          <div class="card-body">Hash similar vectors to the same bucket. At query time, search only the matching bucket. <strong>Postal code analogy</strong> from whitepaper: find nearby houses by neighbourhood, not by searching every street.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">HNSW</div><div class="card-abbr t-d2">Hierarchical Navigable Small Worlds</div></div>
+          <div class="card-body">Graph with hierarchical layers. Top: few nodes, long-range links (coarse). Bottom: all nodes, short links (precise). Search enters at top, greedily zooms down each layer — like Google Maps going from continent to street. <strong>O(log N)</strong>. Used by Pinecone, Weaviate.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">ScaNN</div><div class="card-abbr t-d2">Scalable Nearest Neighbours</div></div>
+          <div class="card-body">Google's algorithm, powers Vertex AI. <strong>Anisotropic quantization</strong>: prioritises preserving distances of high-scoring vectors over preserving all distances equally. Partition space into √N clusters → score only nearest clusters. Best speed/accuracy tradeoff. Used by Vertex AI Vector Search.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Complexity comparison</div></div>
+          <div class="card-body">
+            Brute force: <strong>O(N)</strong> — compare all, 100% accurate<br>
+            LSH / trees: <strong>O(√N)</strong> approx<br>
+            HNSW: <strong>O(log N)</strong> — high accuracy<br>
+            ScaNN: <strong>O(log N)</strong> + better recall<br><br>
+            <strong>Rule:</strong> √N = good starting partition count for ScaNN
+          </div>
+        </div>
+      </div>
+
+      <div class="section-title">Vector Databases</div>
+      <table class="compare-table">
+        <tr><th>Database</th><th>Type</th><th>ANN algo</th><th>Best for</th></tr>
+        <tr><td><strong>FAISS</strong> (Meta)</td><td>In-process library</td><td>HNSW + IVF</td><td>Prototyping, notebooks, Kaggle codelabs</td></tr>
+        <tr><td><strong>ChromaDB</strong></td><td>Open-source DB</td><td>—</td><td>Local dev, rapid prototyping, in-memory mode</td></tr>
+        <tr><td><strong>Weaviate</strong></td><td>Open-source + cloud</td><td>HNSW</td><td>Hybrid semantic + keyword search</td></tr>
+        <tr><td><strong>Pinecone</strong></td><td>Managed cloud (commercial)</td><td>HNSW</td><td>Production without infra expertise</td></tr>
+        <tr><td><strong>Vertex AI Vector Search</strong></td><td>Managed cloud (Google)</td><td>ScaNN</td><td>GCP workloads, Kaggle codelabs</td></tr>
+      </table>
+
+      <div class="callout callout-warn"><strong>Operational gotchas:</strong> (1) When you upgrade embedding models, old vectors are incompatible — you must re-embed your entire corpus. (2) Semantic search fails on exact IDs/product codes — use hybrid search (semantic + keyword) for production. (3) OLTP workloads (frequent writes): use pgvector/AlloyDB. OLAP (batch analysis): use BigQuery vector.</div>
+
+      <div class="section-title">Training Embeddings</div>
+      <div class="cards-grid">
+        <div class="card">
+          <div class="card-head"><div class="card-title">Siamese (Single Tower)</div></div>
+          <div class="card-body">One shared encoder for both query and document. Good for symmetric similarity (sentence pairs). Weights are shared — simpler architecture.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Asymmetric Dual Encoder</div><div class="card-abbr t-d2">Two Tower</div></div>
+          <div class="card-body">Separate encoders for query and document. Better for RAG because questions and answers are phrased very differently. One tower specialises in queries, one in documents. Used in all production retrieval systems.</div>
+        </div>
+        <div class="card cards-grid one" style="grid-column:1/-1">
+          <div class="card-head"><div class="card-title">Contrastive Loss</div></div>
+          <div class="card-body">Training signal for embedding models. Takes triplets: (query, positive_doc, negative_doc). Pushes query vector toward positive, away from negative. <code>loss = max(0, margin − similarity(q, pos) + similarity(q, neg))</code></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="p-day3">
+      <div class="day-hero bg-d3" style="border:1px solid rgba(62,207,142,0.2)">
+        <div class="day-num d3-accent">Whitepaper: Generative AI Agents</div>
+        <h1>AI Agents</h1>
+        <p>How agents extend models with tools and memory, the four cognitive architectures, the three tool types, multi-agent systems, and how to improve tool-use through targeted learning.</p>
+      </div>
+
+      <div class="section-title">Agent vs Model</div>
+      <table class="compare-table">
+        <tr><th>Capability</th><th>Model alone</th><th>Agent</th></tr>
+        <tr><td>Knowledge</td><td>Limited to training data cutoff</td><td>Extended through external tools (web search, databases, APIs)</td></tr>
+        <tr><td>Session history</td><td>No native memory unless explicitly implemented</td><td>Managed chat history across turns via orchestration layer</td></tr>
+        <tr><td>Tool use</td><td>No native tool implementation</td><td>Tools are natively implemented in architecture</td></tr>
+        <tr><td>Reasoning</td><td>User constructs reasoning via prompts</td><td>Native cognitive architecture (CoT, ReAct, etc.) built in</td></tr>
+      </table>
+
+      <div class="section-title">Three Components of Every Agent</div>
+      <div class="cards-grid three">
+        <div class="card bg-d3">
+          <div class="card-head"><div class="card-title d3-accent">The Model</div></div>
+          <div class="card-body">The LLM acting as centralised decision-maker. Can be general-purpose, multimodal, or fine-tuned. The model is typically NOT trained with the specific tool configuration — it learns tool use through examples at inference time.</div>
+        </div>
+        <div class="card bg-d3">
+          <div class="card-head"><div class="card-title d3-accent">The Tools</div></div>
+          <div class="card-body">Bridge between agent and external world. Three types: <strong>Extensions</strong> (agent-side), <strong>Functions</strong> (client-side), <strong>Data Stores</strong> (RAG). Tools align with HTTP methods: GET, POST, PATCH, DELETE.</div>
+        </div>
+        <div class="card bg-d3">
+          <div class="card-head"><div class="card-title d3-accent">The Orchestration Layer</div></div>
+          <div class="card-body">Governs the cyclical loop: take in information → reason → decide next action → execute → repeat until goal reached. The cognitive architecture is implemented here. Your LangGraph StateGraph IS the orchestration layer.</div>
+        </div>
+      </div>
+
+      <div class="section-title">Cognitive Architectures</div>
+      <div class="cards-grid">
+        <div class="card">
+          <div class="card-head"><div class="card-title">ReAct</div><div class="card-abbr t-d3">Reason + Act</div></div>
+          <div class="card-body"><strong>Loop:</strong> Thought → Action → Observation → Thought… → Final Answer<br><br>Six outputs: Question, Thought, Action, Action Input, Observation, Final Answer. Stops when model outputs "Final Answer". Default for tool-using agents.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Chain-of-Thought</div><div class="card-abbr t-d1">CoT</div></div>
+          <div class="card-body">Single forward pass with visible reasoning steps. No tool loop. Sub-variants: self-consistency, active-prompt, multimodal CoT.<br><br><strong>Use when:</strong> task has a clear logical structure with no external data needed. Faster and cheaper than ReAct.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Plan-and-Solve</div><div class="card-abbr t-d3">P&S</div></div>
+          <div class="card-body">Model generates a complete numbered plan upfront, then executes each step. Unlike ReAct which is reactive, P&S commits to a full plan before execution.<br><br><strong>Use when:</strong> task has known sequential steps that can be planned in advance.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Self-Critique Loop</div></div>
+          <div class="card-body">Generate → Critique (separate LLM call with evaluator prompt) → Revise → repeat until quality threshold met.<br><br><strong>Use when:</strong> output quality is non-negotiable (code, medical, legal). Layer on top of any other architecture.</div>
+        </div>
+      </div>
+
+      <div class="section-title">Tool Types — Figure 8 from whitepaper</div>
+      <table class="compare-table">
+        <tr><th>Type</th><th>Who executes</th><th>Use case</th><th>LangChain equivalent</th></tr>
+        <tr><td><strong>Extensions</strong></td><td>Agent-side — agent calls API directly</td><td>Agent needs autonomous API control, native pre-built extensions (Vertex Search, Code Interpreter), multi-hop planning</td><td>N/A — Google Vertex AI specific</td></tr>
+        <tr><td><strong>Functions</strong></td><td>Client-side — your app calls the API</td><td>API has auth restrictions, timing constraints, needs human-in-the-loop, API not publicly accessible</td><td><code>@tool</code> decorator + <code>ToolNode</code></td></tr>
+        <tr><td><strong>Data Stores</strong></td><td>Agent-side — agent queries vector DB</td><td>RAG over documents: website content, PDFs, Word, CSV, relational/non-relational DBs, unstructured data</td><td>ChromaDB wrapped as <code>@tool</code></td></tr>
+      </table>
+
+      <div class="section-title">Multi-Agent Patterns</div>
+      <div class="cards-grid">
+        <div class="card">
+          <div class="card-head"><div class="card-title">Sequential Pipeline</div></div>
+          <div class="card-body">Agent A → Agent B → Agent C. Each output is the next agent's input. Best for ordered, predetermined task sequences (research → write → edit).</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Orchestrator + Subagents</div></div>
+          <div class="card-body">One orchestrator routes tasks to specialist subagents on demand. Subagents are wrapped as <code>@tool</code>. Whitepaper term: "mixture of agent experts".</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Mixture of Experts</div><div class="card-abbr t-d3">Agent chaining</div></div>
+          <div class="card-body">Router dispatches incoming requests to the most relevant specialist agent. Best for high-volume, varied-domain pipelines. Different from orchestrator pattern — routing is the primary logic.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Communication methods</div></div>
+          <div class="card-body"><strong>Subagent as @tool</strong>: simplest, result arrives as ToolMessage observation.<br><strong>Shared state graph</strong>: multiple agent nodes in one LangGraph, shared AgentState.<br><strong>Subgraphs</strong>: independently compiled LangGraphs referenced as nodes in parent graph.</div>
+        </div>
+      </div>
+
+      <div class="section-title">Targeted Learning for Agents</div>
+      <div class="cards-grid three">
+        <div class="card">
+          <div class="card-head"><div class="card-title">In-context learning</div></div>
+          <div class="card-body">Provide tool descriptions, worked examples of tool use, and the task in the prompt. Model learns on the fly. <strong>ReAct is an example</strong> of this approach. Cheapest — no training required.</div>
+          <div class="card-example"><div class="ex-label">Chef analogy</div>Chef given a recipe on the spot</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Retrieval-based in-context</div></div>
+          <div class="card-body">Store thousands of (query → tool_call → result) examples in a vector DB. Retrieve the most relevant examples at runtime. Vertex AI calls this the <strong>Example Store</strong>. RAG applied to tool-use examples.</div>
+          <div class="card-example"><div class="ex-label">Chef analogy</div>Chef with a well-stocked pantry of cookbooks</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Fine-tuning based</div></div>
+          <div class="card-body">Train the model on a dataset of (query → correct tool choice → correct arguments) before deployment. Most expensive but model internalises tool use into weights. Used when in-context approaches hit a ceiling.</div>
+          <div class="card-example"><div class="ex-label">Chef analogy</div>Chef sent back to culinary school</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="p-day4">
+      <div class="day-hero bg-d4" style="border:1px solid rgba(245,166,35,0.2)">
+        <div class="day-num d4-accent">Whitepaper: Solving Domain-Specific Problems Using LLMs</div>
+        <h1>Domain-Specific LLMs</h1>
+        <p>How to take a general foundation model and make it an expert in a specific domain. The universal four-stage training pipeline, PEFT shortcuts, and how to evaluate specialist models when standard metrics fail.</p>
+      </div>
+
+      <div class="section-title">The Universal Training Pipeline</div>
+      <div class="pipeline">
+        <div class="pipe-node t-d2">Foundation model<br><span style="font-size:10px;opacity:0.7">trillions of tokens</span></div><div class="pipe-arrow">→</div>
+        <div class="pipe-node t-d1">Continued pre-training<br><span style="font-size:10px;opacity:0.7">domain corpus, unlabelled</span></div><div class="pipe-arrow">→</div>
+        <div class="pipe-node t-d4">SFT<br><span style="font-size:10px;opacity:0.7">labelled task examples</span></div><div class="pipe-arrow">→</div>
+        <div class="pipe-node t-d5">RLHF<br><span style="font-size:10px;opacity:0.7">human preferences</span></div><div class="pipe-arrow">→</div>
+        <div class="pipe-node t-d3">Domain expert model</div>
+      </div>
+
+      <div class="section-title">Training Stages in Detail</div>
+      <table class="compare-table">
+        <tr><th>Stage</th><th>Data type</th><th>Purpose</th><th>Relative cost</th></tr>
+        <tr><td><strong>Pre-training</strong></td><td>Unlabelled (trillions of tokens)</td><td>Learn language, world knowledge, reasoning patterns from diverse corpus</td><td>💰💰💰💰 Highest — weeks on thousands of GPUs</td></tr>
+        <tr><td><strong>Continued pre-training</strong></td><td>Unlabelled domain text (billions)</td><td>Inject domain vocabulary and concepts without task training</td><td>💰💰💰 Much cheaper than pre-training</td></tr>
+        <tr><td><strong>SFT</strong><br>(Supervised Fine-Tuning)</td><td>Labelled (input, output) pairs (thousands)</td><td>Teach specific task behaviours through imitation learning</td><td>💰💰 Moderate</td></tr>
+        <tr><td><strong>RLHF / RLAIF</strong></td><td>Human/AI preference rankings (hundreds)</td><td>Align outputs with human preferences — helpful, honest, safe</td><td>💰 Cheapest per-step (expensive human annotation)</td></tr>
+      </table>
+
+      <div class="callout callout-warn"><strong>Generalisation risk:</strong> fine-tuning too narrowly on specific tasks can "inadvertently eliminate the ability of the model to generalise to new tasks." Solution: train broadly across many tasks (SFT), use PET adapters for narrow specialisation — never in the base model's training data.</div>
+
+      <div class="section-title">RLHF in Detail</div>
+      <div class="pipeline">
+        <div class="pipe-node t-d2">Humans rank responses<br><span style="font-size:10px;opacity:0.7">A &gt; B &gt; C for same prompt</span></div><div class="pipe-arrow">→</div>
+        <div class="pipe-node t-d1">Reward model trained<br><span style="font-size:10px;opacity:0.7">predicts human preference score</span></div><div class="pipe-arrow">→</div>
+        <div class="pipe-node t-d4">LLM fine-tuned with PPO<br><span style="font-size:10px;opacity:0.7">maximise RM score + KL penalty</span></div><div class="pipe-arrow">→</div>
+        <div class="pipe-node t-d3">Aligned model</div>
+      </div>
+
+      <div class="callout callout-info"><strong>KL divergence penalty:</strong> prevents reward hacking — model finds degenerate outputs that score high but are useless. The KL term forces the model to stay close to the SFT checkpoint distribution. Without it, optimisation leads to gibberish that fools the reward model.</div>
+
+      <div class="section-title">PEFT Techniques</div>
+      <div class="cards-grid three">
+        <div class="card">
+          <div class="card-head"><div class="card-title">LoRA</div><div class="card-abbr t-d4">Low-Rank Adaptation</div></div>
+          <div class="card-body">Freeze all base weights. Add two small matrices A (d×r) and B (r×d) alongside each weight matrix. Train only A and B — typically &lt;1% of parameters.<br><br>At inference: output = frozen_W + A×B. Adapters are swappable without reloading the base model. Multiple customers share one base, each with their own adapter.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">QLoRA</div><div class="card-abbr t-d4">Quantised LoRA</div></div>
+          <div class="card-body">LoRA on a 4-bit quantised base model. 4-bit base ≈ 4× less VRAM than 16-bit. Enables fine-tuning 7B+ models on a single 8–24GB GPU.<br><br><strong>Tradeoff:</strong> small accuracy drop vs full LoRA on full precision base. In practice negligible for most tasks.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Soft Prompting</div></div>
+          <div class="card-body">Add trainable "virtual tokens" to the start of every input. These are continuous embeddings (not real words) — trained to steer model behaviour without changing any weights.<br><br><strong>Tradeoff:</strong> least invasive, easiest to deploy, weakest adaptation signal. Works for simple task-steering.</div>
+        </div>
+      </div>
+
+      <div class="section-title">Evaluation Methods</div>
+      <div class="cards-grid">
+        <div class="card">
+          <div class="card-head"><div class="card-title">Classification metrics</div><div class="card-abbr t-d4">Exact tasks</div></div>
+          <div class="card-body">Accuracy, Precision, Recall, F1, AUC-ROC. Use when output is a discrete label. Malware classification, USMLE multiple choice, sentiment.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Similarity metrics</div><div class="card-abbr t-d4">Open-ended</div></div>
+          <div class="card-body"><strong>ROUGE</strong>: n-gram overlap. Misses valid paraphrases.<br><strong>BLEU</strong>: precision-weighted. Originally for translation.<br><strong>BERTScore</strong>: cosine similarity between BERT embeddings. Captures semantics. Best for specialist domains where paraphrasing is valid.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">LLM-as-judge</div><div class="card-abbr t-d4">AutoSxS</div></div>
+          <div class="card-body">A larger LLM scores outputs — pointwise (1–5) or pairwise (A vs B). Win rate = primary quality signal for side-by-side model comparison. More scalable than human eval. Judge should be larger than the model being evaluated.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Human expert eval</div><div class="card-abbr t-d4">Gold standard</div></div>
+          <div class="card-body">Board-certified clinicians (MedLM) or security experts (SecLM). Blinded side-by-side — evaluators don't know which response came from AI vs human. Covers dimensions no automated metric captures.</div>
+        </div>
+      </div>
+
+      <div class="callout callout-tip"><strong>Med-PaLM 2 benchmark results:</strong> 67% on USMLE (Med-PaLM 1 — first AI to pass) → 86.5% (Med-PaLM 2 — expert level, +19% leap). Pass mark is ~60%. "Merely passing USMLE does not indicate clinical proficiency" — benchmarks are necessary but not sufficient.</div>
+
+      <div class="section-title">Task-specific vs Domain-specific</div>
+      <table class="compare-table">
+        <tr><th>Type</th><th>Trained on</th><th>Good at</th><th>Bad at</th><th>When to use</th></tr>
+        <tr><td><strong>General LLM</strong></td><td>Everything</td><td>Broad coverage</td><td>Deep domain expertise</td><td>Low-stakes, varied tasks</td></tr>
+        <tr><td><strong>Domain LLM</strong></td><td>Domain corpus + many domain tasks</td><td>All tasks in one domain (SecLM = malware + SIEM + threat intel)</td><td>Tasks outside the domain</td><td>Consistently strong performance across a domain</td></tr>
+        <tr><td><strong>Task-specific LLM</strong></td><td>One narrow task dataset</td><td>Peak performance on that one task</td><td>Everything else (generalisation risk)</td><td>High-volume, single repeated task (classify 10k alerts/hour)</td></tr>
+        <tr><td><strong>Domain LLM + PET</strong></td><td>Domain (core) + task data (adapter)</td><td>Domain breadth + task peak</td><td>—</td><td>Best of both worlds. What SecLM uses.</td></tr>
+      </table>
+    </div>
+
+    <div class="panel" id="p-day5">
+      <div class="day-hero bg-d5" style="border:1px solid rgba(232,121,160,0.2)">
+        <div class="day-num d5-accent">Whitepaper: Operationalizing Gen AI on Vertex AI using MLOps</div>
+        <h1>MLOps for<br>Generative AI</h1>
+        <p>How to run Gen AI systems reliably at scale. The five-phase lifecycle, versioning all artifacts, CI/CD for probabilistic systems, drift detection, lineage tracking, and governance. Everything that turns a prototype into a product.</p>
+      </div>
+
+      <div class="section-title">The 5-Phase Gen AI Lifecycle</div>
+      <div class="pipeline">
+        <div class="pipe-node t-d2">① Discover<br><span style="font-size:10px;opacity:0.7">Choose the right model</span></div><div class="pipe-arrow">→</div>
+        <div class="pipe-node t-d1">② Develop &amp; Experiment<br><span style="font-size:10px;opacity:0.7">Prompt, chain, tune</span></div><div class="pipe-arrow">→</div>
+        <div class="pipe-node t-d4">③ Evaluate<br><span style="font-size:10px;opacity:0.7">Measure quality</span></div><div class="pipe-arrow">→</div>
+        <div class="pipe-node t-d3">④ Deploy<br><span style="font-size:10px;opacity:0.7">Version, test, ship</span></div><div class="pipe-arrow">→</div>
+        <div class="pipe-node t-d5">⑤ Monitor &amp; Govern<br><span style="font-size:10px;opacity:0.7">Track and control</span></div>
+      </div>
+
+      <div class="section-title">Phase 1 — Discover: Model Selection Criteria</div>
+      <table class="compare-table">
+        <tr><th>#</th><th>Criterion</th><th>Key question</th><th>Note</th></tr>
+        <tr><td>1</td><td><strong>Quality</strong></td><td>Does it perform well on your actual task (not just benchmarks)?</td><td>Test with your own prompts first. Public benchmarks ≠ task performance.</td></tr>
+        <tr><td>2</td><td><strong>Latency &amp; throughput</strong></td><td>Does it meet your latency SLA? (chatbot needs p95 &lt;2s, batch doesn't)</td><td>Larger models = slower. Smaller fine-tuned models often fast enough.</td></tr>
+        <tr><td>3</td><td><strong>Dev &amp; maintenance time</strong></td><td>Who maintains the serving infrastructure?</td><td>Managed APIs (fast to start) vs self-hosted (more control, more work).</td></tr>
+        <tr><td>4</td><td><strong>Cost</strong></td><td>Cost per million tokens × expected daily volume</td><td>API = pay per token. Self-hosted = fixed GPU cost, cheaper at high volume.</td></tr>
+        <tr><td>5 ⚠</td><td><strong>Compliance</strong></td><td>Data residency, licensing, regulated industry constraints satisfied?</td><td>Non-compliant model = non-starter regardless of quality. Evaluate FIRST.</td></tr>
+      </table>
+
+      <div class="section-title">Phase 2 — Develop: The Prompted Model Component</div>
+      <div class="callout callout-info"><strong>Biggest conceptual shift from traditional ML:</strong> in predictive ML, the deployable artifact is the model file. In Gen AI, neither model nor prompt alone is sufficient — you need both together. The <strong>prompted model component</strong> (model + system prompt + config) is the new atomic deployable unit.</div>
+      <div class="cards-grid">
+        <div class="card">
+          <div class="card-head"><div class="card-title">Prompt as Code</div></div>
+          <div class="card-body">System prompt, guardrails, output format instructions. These define behaviour. Needs: git versioning, PR review, regression tests before any change goes to production. A prompt change = a code deployment.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Prompt as Data</div></div>
+          <div class="card-body">Few-shot examples, knowledge base, user query history. These are data points. Needs: validation, drift detection, lifecycle management (stale examples → remove). Data management practices, not code management.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Chain &amp; Augment</div></div>
+          <div class="card-body">Multiple prompted model components connected together with tool calls, retrieval, and code logic. The entire chain definition (LangGraph StateGraph) is a versioned artifact. A change to routing can break the system end-to-end.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Development Iteration Ladder</div></div>
+          <div class="card-body">1. <strong>Prompt engineering</strong> — free, instant, try first<br>2. <strong>RAG/few-shot augmentation</strong> — add knowledge without training<br>3. <strong>PEFT/LoRA</strong> — requires data + GPU, use when prompting fails<br>4. <strong>Continued pre-training</strong> — only when vocab so specialised base model can't anchor it</div>
+        </div>
+      </div>
+
+      <div class="section-title">Phase 3 — Evaluate: Automation Spectrum</div>
+      <table class="compare-table">
+        <tr><th>Stage</th><th>Method</th><th>When to use</th></tr>
+        <tr><td><strong>Prototype</strong></td><td>Manual eyeballing — developer reviews outputs</td><td>Early development, small scale</td></tr>
+        <tr><td><strong>Growing</strong></td><td>Golden set + LLM-as-judge (AutoSxS) — semi-automated scoring</td><td>Regular iterations, multiple experiments</td></tr>
+        <tr><td><strong>Production</strong></td><td>Full automated eval pipeline as CI/CD gate</td><td>Before every deployment to production</td></tr>
+      </table>
+
+      <div class="callout callout-warn"><strong>Lock down your eval approach early.</strong> If you change your evaluation method mid-project, all historical results become incomparable. Decide on metrics in week one. Change them rarely.</div>
+
+      <div class="section-title">Phase 3 — Eval Dataset Structure</div>
+      <div class="cards-grid three">
+        <div class="card">
+          <div class="card-head"><div class="card-title">Essential cases</div><div class="card-abbr" style="background:rgba(62,207,142,0.15);color:#5fdfa8">Must pass 100%</div></div>
+          <div class="card-body">Core use cases your system must handle correctly every time. Failure = broken. For an agent: basic Q&A, tool invocation, structured output.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Average cases</div><div class="card-abbr" style="background:rgba(77,166,255,0.15);color:#7cbfff">Real distribution</div></div>
+          <div class="card-body">Typical user queries representing the real traffic distribution. Build by sampling production queries once deployed. Quality target: 80–90% pass rate.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Edge cases</div><div class="card-abbr" style="background:rgba(245,166,35,0.15);color:#f5c060">Failures → tests</div></div>
+          <div class="card-body">Unusual, ambiguous, adversarial inputs. Every production failure should become a new edge case. Also include: prompt injection, fuzzing, information leakage.</div>
+        </div>
+      </div>
+
+      <div class="section-title">Phase 4 — Deploy: What to Version</div>
+      <table class="compare-table">
+        <tr><th>Artifact</th><th>How to version</th><th>Why it matters</th></tr>
+        <tr><td><strong>Prompt templates</strong></td><td>Git — plain text files with semantic version tags (v1.2.0)</td><td>Prompt change = behaviour change = deployment event</td></tr>
+        <tr><td><strong>Chain definitions</strong></td><td>Git — LangGraph graph code. Changes require PR + eval gate before merge</td><td>Routing change can break multi-step behaviour end-to-end</td></tr>
+        <tr><td><strong>RAG datasets</strong></td><td>DVC / metadata tagging: source, ingestion date, embedding model version</td><td>Stale docs change retrieval → silent hallucinations</td></tr>
+        <tr><td><strong>LoRA adapters</strong></td><td>Model registry: adapter_v2.1_llama3.2_dataset_v3</td><td>Adapter v1 trained on data v1 ≠ adapter v1 trained on data v2</td></tr>
+      </table>
+
+      <div class="section-title">Phase 4 — The CI/CD Pipeline (Figure 15)</div>
+      <div class="pipeline" style="flex-direction:column;align-items:flex-start;gap:10px">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <div class="pipe-node t-d2">① Validate repo structure</div><div class="pipe-arrow">→</div>
+          <div class="pipe-node t-d2">② Unit + static analysis</div><div class="pipe-arrow">→</div>
+          <div class="pipe-node t-d2">③ Build container</div><div class="pipe-arrow">→</div>
+          <div class="pipe-node t-d2">④ Deploy to dev</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <div class="pipe-node t-d4">⑤ Manual gate 1</div><div class="pipe-arrow">→</div>
+          <div class="pipe-node t-d4">⑥ Deploy to staging</div><div class="pipe-arrow">→</div>
+          <div class="pipe-node t-d4">⑦ Run eval suite + load tests</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <div class="pipe-node t-d3">⑧ Manual gate 2</div><div class="pipe-arrow">→</div>
+          <div class="pipe-node t-d3">⑨ Deploy to production + monitor</div>
+        </div>
+      </div>
+
+      <div class="callout callout-tip"><strong>Two manual approval gates</strong> at steps 5 and 8 — unusual in modern CI/CD but required for agents. Automated tests miss subtle behaviour regressions that a human reviewing 5 sample outputs would catch. Agents have enough autonomy to warrant this extra caution.</div>
+
+      <div class="section-title">Phase 5 — Monitor: What to Track</div>
+      <table class="compare-table">
+        <tr><th>Category</th><th>Metric</th><th>Alert threshold</th></tr>
+        <tr><td rowspan="4"><strong>Efficiency</strong></td><td>Latency p95</td><td>Alert if p95 &gt; SLA (e.g. &gt;5s for chatbot)</td></tr>
+        <tr><td>Token cost per request</td><td>Alert on 2× spike (runaway loop / prompt injection)</td></tr>
+        <tr><td>Error rate</td><td>Alert if &gt;1% of requests fail</td></tr>
+        <tr><td>Tool call success rate</td><td>Alert if &lt;80% emit valid tool calls</td></tr>
+        <tr><td rowspan="3"><strong>Quality</strong></td><td>Eval score on golden set</td><td>Alert if drops &gt;0.5pts week-over-week</td></tr>
+        <tr><td>User thumbs-down rate</td><td>Alert if &gt;20% negative feedback</td></tr>
+        <tr><td>Output length distribution</td><td>Monitor trend — sudden change = model behaviour changed</td></tr>
+      </table>
+
+      <div class="section-title">Phase 5 — Govern: Lineage &amp; Control</div>
+      <div class="callout callout-info"><strong>Gen AI lineage extends beyond the model:</strong> Predictive ML: data → model. Gen AI: data + prompt + chain + RAG dataset + LoRA adapter → output. Every component is a lineage node. Track all four component versions per production run so you can reproduce any output six months later.</div>
+      <div class="cards-grid">
+        <div class="card">
+          <div class="card-head"><div class="card-title">Input/output skew</div></div>
+          <div class="card-body">Detect when production query distribution diverges from your eval set distribution. Use embedding clustering: if new topic clusters appear in production that don't exist in your eval set → update the eval set.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Silent model updates</div></div>
+          <div class="card-body">API providers (Google, OpenAI, Anthropic) sometimes update model behaviour without changing the model name. Continuous eval detects this within one weekly cycle. Without it you discover it when users complain.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">Three governance areas</div></div>
+          <div class="card-body"><strong>1. Data lifecycle</strong> — where does RAG/eval/training data come from, how old, who approved?<br><strong>2. Tuned model lifecycle</strong> — version history of every LoRA adapter + producing dataset.<br><strong>3. Code lifecycle</strong> — git history of prompts, chain definitions, deployment configs.</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><div class="card-title">LangSmith for your project</div><div class="card-abbr t-d3">3 env vars</div></div>
+          <div class="card-body">Add to .env:<br><code>LANGCHAIN_TRACING_V2=true</code><br><code>LANGCHAIN_API_KEY=ls__...</code><br><code>LANGCHAIN_PROJECT=my-agent</code><br><br>Zero code changes. All LangGraph nodes traced automatically. Free tier: 5,000 traces/month.</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+</div><!-- /shell -->
+
+<script>
+// ─── Navigation ───
+function show(id) {
+  // hide all panels
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  // show target
+  const target = document.getElementById('p-' + id);
+  if (target) target.classList.add('active');
+
+  // update sidebar active state
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  event && event.currentTarget && event.currentTarget.classList.add('active');
+
+  // update topbar title
+  const titles = {
+    overview: 'Overview',
+    acronyms: 'All Acronyms',
+    day1: 'LLMs & Prompt Engineering',
+    day2: 'Embeddings & Vector Stores',
+    day3: 'AI Agents',
+    day4: 'Domain-Specific LLMs',
+    day5: 'MLOps for Generative AI',
+  };
+  document.getElementById('topbarTitle').textContent = titles[id] || id;
+
+  // scroll to top
+  document.querySelector('.main').scrollTop = 0;
+  window.scrollTo(0, 0);
+}
+
+// ─── Search ───
+function doSearch(query) {
+  const q = query.trim().toLowerCase();
+  if (!q) {
+    clearSearch();
+    return;
+  }
+
+  // Search all panels
+  let firstMatch = null;
+  document.querySelectorAll('.panel').forEach(panel => {
+    const text = panel.textContent.toLowerCase();
+    if (text.includes(q) && !firstMatch) firstMatch = panel.id.replace('p-', '');
+  });
+
+  if (firstMatch) show(firstMatch);
+
+  // Highlight matches
+  setTimeout(() => {
+    clearHighlights();
+    if (!q) return;
+    const walker = document.createTreeWalker(
+      document.getElementById('mainContent'),
+      NodeFilter.SHOW_TEXT,
+      null
+    );
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+
+    nodes.forEach(node => {
+      const parent = node.parentNode;
+      if (parent.tagName === 'MARK' || parent.tagName === 'SCRIPT' || parent.tagName === 'STYLE') return;
+      const text = node.textContent;
+      const lower = text.toLowerCase();
+      const idx = lower.indexOf(q);
+      if (idx === -1) return;
+      const before = document.createTextNode(text.substring(0, idx));
+      const mark = document.createElement('mark');
+      mark.textContent = text.substring(idx, idx + q.length);
+      const after = document.createTextNode(text.substring(idx + q.length));
+      const frag = document.createDocumentFragment();
+      frag.appendChild(before);
+      frag.appendChild(mark);
+      frag.appendChild(after);
+      parent.replaceChild(frag, node);
+    });
+  }, 100);
+}
+
+function clearHighlights() {
+  document.querySelectorAll('mark').forEach(m => {
+    const parent = m.parentNode;
+    parent.replaceChild(document.createTextNode(m.textContent), m);
+    parent.normalize();
+  });
+}
+
+function clearSearch() {
+  clearHighlights();
+}
+
+// ─── Fix nav clicks ───
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('click', function() {
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    this.classList.add('active');
+  });
+});
+</script>
+</body>
+</html>
