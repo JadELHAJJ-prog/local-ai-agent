@@ -19,8 +19,10 @@ def search_web(query: str) -> str:
     your training data. Input should be a search query string."""
     with DDGS() as ddgs:
         results = ddgs.text(query, max_results=3)
+        # Return early when the search yields nothing
         if not results:
             return "No results found."
+        # Format each result into a readable title/url/summary block
         return "\n".join(
             [
                 f"Title: {r['title']}\nURL: {r['href']}\nSummary: {r['body']}"
@@ -40,6 +42,7 @@ def execute_code(code: str) -> str:
             tmp.write(code)
             tmp_path = tmp.name
 
+        # Resource-constrained Docker container prevents runaway processes and network access
         result = subprocess.run(
             [
                 "docker",
@@ -62,16 +65,20 @@ def execute_code(code: str) -> str:
             timeout=30,
         )
 
+        # Distinguish a clean exit from a non-zero error exit
         if result.returncode == 0:
             return result.stdout or "Code executed successfully with no output."
         else:
             return f"Error:\n{result.stderr}"
 
+    # Surface timeout as a user-readable message instead of a raw exception
     except subprocess.TimeoutExpired:
         return "Error: Code execution timed out after 30 seconds."
+    # Catch Docker not found, permission errors, or any other unexpected failure
     except Exception as e:
         return f"Error: {e}"
     finally:
+        # Always delete the temp file even if execution failed or timed out
         if tmp_path and os.path.exists(tmp_path):
             os.remove(tmp_path)
 
@@ -82,6 +89,7 @@ def analyze_image(image_path: str, question: str = "What is in this image?") -> 
     provides an image path and wants to know what's in it,
     extract text from it, or ask questions about it.
     Input should be the path to the image file."""
+    # Guard against a path that does not exist on disk
     if not os.path.exists(image_path):
         return f"Error: Image file not found at {image_path}"
 
@@ -99,6 +107,7 @@ def analyze_image(image_path: str, question: str = "What is in this image?") -> 
     )
 
     response = vlm.invoke([message])
+    # Return a fallback string if the vision model returned an empty response
     return response.content if response.content else "No response from vision model."
 
 
@@ -110,25 +119,31 @@ def analyze_video(
     """Analyze a video using vision AI by sampling key frames.
     Use this when the user provides a video file path (.mp4, .avi, .mov, .mkv).
     Input should be the path to the video file."""
+    # Guard against a path that does not exist on disk
     if not os.path.exists(video_path):
         return f"Error: Video file not found at {video_path}"
 
     cap = cv2.VideoCapture(video_path)
+    # Guard against a file OpenCV cannot decode or open
     if not cap.isOpened():
         return f"Error: Could not open video file at {video_path}"
 
     try:
+        # Sample frames at evenly-spaced intervals instead of processing every frame
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         interval = max(1, total_frames // MAX_FRAMES)
         frames_analyzed = 0
         content = [{"type": "text", "text": question}]
 
+        # Walk through the video at computed intervals to collect sample frames
         for frame_idx in range(0, total_frames, interval):
+            # Stop once the target number of frames has been collected
             if frames_analyzed >= MAX_FRAMES:
                 break
 
             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
             ret, frame = cap.read()
+            # Skip frames that OpenCV failed to decode
             if not ret:
                 continue
 
@@ -144,6 +159,7 @@ def analyze_video(
             frames_analyzed += 1
             print(f"Extracted frame {frames_analyzed}/{MAX_FRAMES}...", flush=True)
 
+        # Nothing usable was extracted, report failure before calling the model
         if frames_analyzed == 0:
             return "No frames could be extracted from this video."
 
@@ -161,6 +177,7 @@ def analyze_document(file_path: str, question: str = "Summarize this document") 
     Use when user provides a .pdf, .docx, .xlsx, .xls, or .csv file path.
     Input should be the path to the document file."""
 
+    # Guard against a path that does not exist on disk
     if not os.path.exists(file_path):
         return f"Error: File not found at {file_path}"
 
@@ -168,12 +185,15 @@ def analyze_document(file_path: str, question: str = "Summarize this document") 
     extracted_text = ""
 
     try:
+        # Select the appropriate parser based on the file extension
         if ext == ".pdf":
             import pdfplumber
 
             with pdfplumber.open(file_path) as pdf:
+                # Accumulate text from every page in the document
                 for page in pdf.pages:
                     text = page.extract_text()
+                    # Skip pages that contain no extractable text
                     if text:
                         extracted_text += text + "\n"
 
@@ -181,10 +201,12 @@ def analyze_document(file_path: str, question: str = "Summarize this document") 
             from docx import Document
 
             doc = Document(file_path)
+            # Walk each paragraph and skip blank ones
             for para in doc.paragraphs:
                 if para.text.strip():
                     extracted_text += para.text + "\n"
             # also extract tables
+            # Walk each table row and join cells with a pipe separator
             for table in doc.tables:
                 for row in table.rows:
                     row_text = " | ".join(cell.text.strip() for cell in row.cells)
@@ -194,13 +216,16 @@ def analyze_document(file_path: str, question: str = "Summarize this document") 
             import openpyxl
 
             wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
+            # Iterate every sheet so multi-sheet workbooks are fully covered
             for sheet_name in wb.sheetnames:
                 sheet = wb[sheet_name]
                 extracted_text += f"Sheet: {sheet_name}\n"
+                # Walk each data row and join cells with a pipe separator
                 for row in sheet.iter_rows(values_only=True):
                     row_text = " | ".join(
                         str(cell) if cell is not None else "" for cell in row
                     )
+                    # Skip rows that are entirely empty
                     if row_text.strip(" |"):
                         extracted_text += row_text + "\n"
 
@@ -213,18 +238,20 @@ def analyze_document(file_path: str, question: str = "Summarize this document") 
         else:
             return f"Error: Unsupported file type {ext}"
 
+    # Catch library-level parsing errors and surface them as a readable message
     except Exception as e:
         return f"Error reading file: {e}"
 
+    # Return early when the parser produced no usable content
     if not extracted_text.strip():
         return "Error: Could not extract any text from this file."
 
-    # truncate if too long for context window
+    # Truncate extracted text to stay within the model context window
     max_chars = 6000
     if len(extracted_text) > max_chars:
         extracted_text = extracted_text[:max_chars] + "\n... [truncated]"
 
-    # send to LLM with question
+    # Send extracted text alongside the user question to produce an answer
     response = llm.invoke([HumanMessage(content=f"""Here is the content of the document:
 
 {extracted_text}

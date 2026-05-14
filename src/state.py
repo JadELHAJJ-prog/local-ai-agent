@@ -4,6 +4,7 @@ from typing import Annotated, Optional
 from typing_extensions import TypedDict
 
 
+# Shared mutable state propagated through every node in the LangGraph graph
 class AgentState(TypedDict):
     messages: Annotated[list, add_messages]
     thread_id: str

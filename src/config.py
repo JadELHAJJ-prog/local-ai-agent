@@ -14,6 +14,7 @@ NUM_PREDICT = int(os.getenv("NUM_PREDICT", "1024"))
 TOP_P = float(os.getenv("TOP_P", "0.9"))
 MAX_FRAMES = int(os.getenv("MAX_FRAMES", "8"))
 
+# Keyword phrases used to route user messages to the code generation path
 CODE_PATTERNS = [
     "write code", "write a code", "write me a code", "write for me", "write me a",
     "write a script", "write a program", "write a function", "write a class",
@@ -35,10 +36,12 @@ CODE_PATTERNS = [
     "i need a program", "python code", "python script", "python function",
 ]
 
+# Keywords checked to interpret human approval in the review step
 APPROVAL_PHRASES = [
     "yes", "i like", "looks good", "approved", "ok", "good", "run it", "execute",
 ]
 
+# Maps supported file extensions to their document parser type
 DOCUMENT_EXTENSIONS = {
     ".pdf": "pdf",
     ".docx": "docx",

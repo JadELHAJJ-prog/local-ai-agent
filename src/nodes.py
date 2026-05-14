@@ -43,17 +43,21 @@ Examples of tool needed:
 )
 
 
+# Bound conversation history to prevent context overflow on long sessions
 def trim_messages_window(messages: list, max_messages: int = 20) -> list:
+    # Only slice when history has grown beyond the allowed window
     if len(messages) > max_messages:
         return messages[-max_messages:]
     return messages
 
 
+# Extract an attached file or media path from the raw message so it can be labeled separately
 def parse_user_input(user_input: str) -> tuple[str, str | None]:
     match = re.search(
         r"(/[\w/.\-_]+\.(?:jpg|jpeg|png|gif|webp|mp4|avi|mov|mkv|pdf|docx|xlsx|xls|csv))",
         user_input,
     )
+    # A file or media path was found; strip it from the text and return it separately
     if match:
         image_path = match.group(1)
         clean_message = user_input.replace(image_path, "").strip()
@@ -62,17 +66,22 @@ def parse_user_input(user_input: str) -> tuple[str, str | None]:
 
 
 # --- Router ---
+# Classify the input type so the graph can dispatch to the correct specialized node
 def input_router_node(state: AgentState) -> dict:
     last_message = state["messages"][-1]
     content = last_message.content.lower()
 
+    # Message contains an attached file or media marker injected by parse_user_input
     if "[file provided at path:" in content or "[image provided at path:" in content:
-        # detect specific file type from path
+        # Match the extension against known document types to get a specific parser label
         for ext, doc_type in DOCUMENT_EXTENSIONS.items():
+            # Stop at the first extension that appears in the message content
             if ext in content:
                 return {"input_type": f"document_{doc_type}"}
+        # Path present but extension is a media type, not a document
         return {"input_type": "media"}
 
+    # Message matches one of the code-request trigger phrases
     if any(pattern in content for pattern in CODE_PATTERNS):
         return {"input_type": "code"}
 
@@ -81,6 +90,7 @@ def input_router_node(state: AgentState) -> dict:
 
 def should_route(state: AgentState) -> str:
     input_type = state.get("input_type", "general")
+    # Code requests skip the general agent and go straight to the coder model
     if input_type == "code":
         return "code_generation_node"
     return "agent_node"
@@ -100,13 +110,19 @@ def agent_node(state: AgentState) -> dict:
 
 def should_use_tool(state: AgentState) -> str:
     last_message = state["messages"][-1]
+    # The agent requested a tool call, decide which path to follow
     if last_message.tool_calls:
         tool_name = last_message.tool_calls[0]["name"]
+        # execute_code needs special treatment: improve the code then get human sign-off
         if tool_name == "execute_code":
+            # Code has not been through the coder model yet, improve it first
             if not state.get("code_generated", False):
                 return "code_generation_node"
+            # Code is ready, route to human approval before running
             return "human_approval_node"
+        # All other tools run directly without approval
         return "tool_node"
+    # No tool call requested, validate the response text
     return "output_parser_node"
 
 
@@ -114,7 +130,7 @@ def should_use_tool(state: AgentState) -> str:
 def code_generation_node(state: AgentState) -> dict:
     last_message = state["messages"][-1]
 
-    # coming from input_router - no tool_calls yet, generate from user request
+    # Entry from input_router: no tool_call yet, so generate fresh code from the user request
     if not hasattr(last_message, "tool_calls") or not last_message.tool_calls:
         user_request = last_message.content
         code_prompt = f"""You are an expert Python developer.
@@ -137,7 +153,7 @@ Write Python code for this task. Return ONLY raw Python code, no markdown, no ex
         )
         return {"messages": [new_message], "code_generated": True}
 
-    # coming from agent_node - improve existing code in the tool_call
+    # Entry from agent_node: LLM already produced rough code, pass it to coder model for improvement
     tool_call = last_message.tool_calls[0]
     rough_code = tool_call["args"]["code"]
     code_prompt = f"""You are an expert Python developer.
@@ -163,14 +179,18 @@ Improve and optimize this code. Return ONLY raw Python code, no markdown, no exp
 
 
 def _strip_markdown(text: str) -> str:
+    # Prefer the python-fenced block when the model used a language tag
     if "```python" in text:
         return text.split("```python")[1].split("```")[0].strip()
+    # Fall back to a generic fenced block when no language tag is present
     if "```" in text:
         return text.split("```")[1].split("```")[0].strip()
+    # No fences found, return the text as-is
     return text
 
 
 # --- Human approval ---
+# Pause graph execution and surface the pending tool call for human review before running it
 def human_approval_node(state: AgentState) -> dict:
     last_message = state["messages"][-1]
     tool_call = last_message.tool_calls[0]
@@ -181,6 +201,7 @@ def human_approval_node(state: AgentState) -> dict:
     print(f"Agent wants to call: '{tool_name}'")
     print(f"{'='*50}")
 
+    # Show the code body for execute_code; show raw args for any other tool
     if tool_name == "execute_code":
         print("Code to execute:")
         print("-" * 30)
@@ -191,12 +212,15 @@ def human_approval_node(state: AgentState) -> dict:
 
     human_response = interrupt("\nApprove? (yes/no + optional feedback): ")
 
+    # Treat the response as approved if it starts with "yes" or matches any approval phrase
     approved = human_response.lower().startswith("yes") or any(
         phrase in human_response.lower() for phrase in APPROVAL_PHRASES
     )
 
+    # On approval, clear the code_generated flag so the next run starts fresh
     if approved:
         return {"human_feedback": human_response, "code_generated": False}
+    # On rejection, inject a feedback message so the agent rewrites the code
     else:
         return {
             "human_feedback": human_response,
@@ -212,12 +236,15 @@ def human_approval_node(state: AgentState) -> dict:
 
 def should_execute_tool(state: AgentState) -> str:
     feedback = state.get("human_feedback", "").lower()
+    # Only execute the tool when the human explicitly approved it
     if any(phrase in feedback for phrase in APPROVAL_PHRASES):
         return "tool_node"
+    # Rejection routes back to the agent so it can rewrite based on the feedback message
     return "agent_node"
 
 
 # --- Output parser ---
+# Validate that the agent produced a non-empty response and track retries for empty outputs
 def output_parser_node(state: AgentState) -> dict:
     last_message = state["messages"][-1]
     is_valid = bool(last_message.content and last_message.content.strip())
@@ -228,9 +255,12 @@ def output_parser_node(state: AgentState) -> dict:
     }
 
 
+# Cap retries at 3 to avoid infinite loops on persistent empty responses
 def should_retry(state: AgentState) -> str:
+    # Output was non-empty, nothing to retry
     if state["is_valid"]:
         return "end"
+    # Exhausted all retries, give up rather than looping forever
     if state.get("retry_count", 0) >= 3:
         return "end"
     return "retry"
