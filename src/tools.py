@@ -2,6 +2,7 @@ import subprocess
 import tempfile
 import os
 import base64
+import mimetypes
 
 import cv2
 from langchain_core.messages import HumanMessage
@@ -19,10 +20,10 @@ def search_web(query: str) -> str:
     your training data. Input should be a search query string."""
     with DDGS() as ddgs:
         results = ddgs.text(query, max_results=3)
-        # Return early when the search yields nothing
+        # Return early when the search yields nothing useful
         if not results:
             return "No results found."
-        # Format each result into a readable title/url/summary block
+        # Format each result into a readable title/url/summary block and join them
         return "\n".join(
             [
                 f"Title: {r['title']}\nURL: {r['href']}\nSummary: {r['body']}"
@@ -38,11 +39,12 @@ def execute_code(code: str) -> str:
     or test a Python script. Input should be valid Python code."""
     tmp_path = None
     try:
+        # Write the code to a temp file so Docker can mount it read-only into the container
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tmp:
             tmp.write(code)
             tmp_path = tmp.name
 
-        # Resource-constrained Docker container prevents runaway processes and network access
+        # Resource-constrained Docker run: no network, 128MB RAM cap, 0.5 CPU, 30s timeout
         result = subprocess.run(
             [
                 "docker",
@@ -96,12 +98,15 @@ def analyze_image(image_path: str, question: str = "What is in this image?") -> 
     with open(image_path, "rb") as f:
         base64_image = base64.b64encode(f.read()).decode("utf-8")
 
+    # Detect the actual MIME type from the file extension so PNG, GIF, and WEBP are labeled correctly
+    mime_type = mimetypes.guess_type(image_path)[0] or "image/jpeg"
+
     message = HumanMessage(
         content=[
             {"type": "text", "text": question},
             {
                 "type": "image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
+                "image_url": {"url": f"data:{mime_type};base64,{base64_image}"},
             },
         ]
     )
@@ -129,13 +134,13 @@ def analyze_video(
         return f"Error: Could not open video file at {video_path}"
 
     try:
-        # Sample frames at evenly-spaced intervals instead of processing every frame
+        # Compute a uniform frame interval so exactly MAX_FRAMES samples are spread across the video
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         interval = max(1, total_frames // MAX_FRAMES)
         frames_analyzed = 0
         content = [{"type": "text", "text": question}]
 
-        # Walk through the video at computed intervals to collect sample frames
+        # Walk through the video at the computed interval collecting sample frames
         for frame_idx in range(0, total_frames, interval):
             # Stop once the target number of frames has been collected
             if frames_analyzed >= MAX_FRAMES:
@@ -143,10 +148,11 @@ def analyze_video(
 
             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
             ret, frame = cap.read()
-            # Skip frames that OpenCV failed to decode
+            # Skip any frame that OpenCV failed to decode
             if not ret:
                 continue
 
+            # Resize and compress each frame to reduce the total payload sent to the VLM
             frame = cv2.resize(frame, (512, 512))
             _, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
             base64_image = base64.b64encode(buffer.tobytes()).decode("utf-8")
@@ -205,7 +211,6 @@ def analyze_document(file_path: str, question: str = "Summarize this document") 
             for para in doc.paragraphs:
                 if para.text.strip():
                     extracted_text += para.text + "\n"
-            # also extract tables
             # Walk each table row and join cells with a pipe separator
             for table in doc.tables:
                 for row in table.rows:
@@ -220,7 +225,7 @@ def analyze_document(file_path: str, question: str = "Summarize this document") 
             for sheet_name in wb.sheetnames:
                 sheet = wb[sheet_name]
                 extracted_text += f"Sheet: {sheet_name}\n"
-                # Walk each data row and join cells with a pipe separator
+                # Walk each data row and join non-None cells with a pipe separator
                 for row in sheet.iter_rows(values_only=True):
                     row_text = " | ".join(
                         str(cell) if cell is not None else "" for cell in row

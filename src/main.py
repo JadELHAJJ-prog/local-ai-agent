@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import uuid
 
 from langchain_core.messages import HumanMessage
@@ -8,7 +9,32 @@ from langgraph.types import Command
 
 from config import DOCUMENT_EXTENSIONS
 from graph import build_graph
-from nodes import parse_user_input
+
+
+# Extract an attached file or media path from the raw message so it can be labeled separately
+def parse_user_input(user_input: str) -> tuple[str, str | None]:
+    # Match any absolute path whose extension is a supported image, video, or document type
+    match = re.search(
+        r"(/[\w/.\-_]+\.(?:jpg|jpeg|png|gif|webp|mp4|avi|mov|mkv|pdf|docx|xlsx|xls|csv))",
+        user_input,
+    )
+    # A file or media path was found: strip it from the text and return it separately
+    if match:
+        image_path = match.group(1)
+        clean_message = user_input.replace(image_path, "").strip()
+        return clean_message, image_path
+    # No path found: return the original input unchanged with no path
+    return user_input, None
+
+
+# Filter the stream to agent_node chunks only and print each content piece as it arrives
+def _stream_agent(app, input_, config):
+    for chunk, metadata in app.stream(input_, config=config, stream_mode="messages"):
+        # Skip chunks from router, tool, approval, and parser nodes — only show agent text
+        if metadata.get("langgraph_node") == "agent_node":
+            # Guard against chunks that carry no text content such as tool call scaffolding
+            if hasattr(chunk, "content") and chunk.content:
+                print(chunk.content, end="", flush=True)
 
 
 # Persist the last thread ID so users can resume their session across restarts
@@ -55,7 +81,7 @@ if __name__ == "__main__":
         config = {"configurable": {"thread_id": thread_id}}
         print("Agent ready. Type 'exit' to quit.\n")
 
-        # Main conversation loop, runs until the user types "exit"
+        # Main conversation loop: runs until the user types "exit"
         while True:
             user_input = input("You: ")
             # Exit condition checked before any processing
@@ -68,7 +94,7 @@ if __name__ == "__main__":
             # Attach a labeled file marker when input contains a file or media path
             if image_path:
                 ext = os.path.splitext(image_path)[1].lower()
-                # Label as "file" for documents, "image" for all other media types
+                # Label as "file" for documents so the router classifies them separately from images
                 label = "file" if ext in DOCUMENT_EXTENSIONS else "image"
                 message = HumanMessage(
                     content=f"{text} [{label} provided at path: {image_path}]"
@@ -77,32 +103,14 @@ if __name__ == "__main__":
             else:
                 message = HumanMessage(content=text)
 
-            # Stream graph output and print only the chunks produced by the agent node
-            for chunk, metadata in app.stream(
-                {"messages": [message]},
-                config=config,
-                stream_mode="messages",
-            ):
-                # Filter out tool and router node output, only display agent responses
-                if metadata.get("langgraph_node") == "agent_node":
-                    # Guard against chunks that carry no text content
-                    if hasattr(chunk, "content") and chunk.content:
-                        print(chunk.content, end="", flush=True)
+            _stream_agent(app, {"messages": [message]}, config)
 
             state = app.get_state(config)
             # Poll for pending graph interrupts that require human input before continuing
             while state.next:
                 human_input = input("\nYour decision: ")
-                # Resume the paused graph with the human's decision and stream its output
-                for chunk, metadata in app.stream(
-                    Command(resume=human_input),
-                    config=config,
-                    stream_mode="messages",
-                ):
-                    # Same agent-only filter applied to resumed output
-                    if metadata.get("langgraph_node") == "agent_node":
-                        if hasattr(chunk, "content") and chunk.content:
-                            print(chunk.content, end="", flush=True)
+                # Resume the paused graph with the human decision and stream its continued output
+                _stream_agent(app, Command(resume=human_input), config)
                 state = app.get_state(config)
 
             print("\n")

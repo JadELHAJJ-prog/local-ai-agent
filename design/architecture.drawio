@@ -1,6 +1,6 @@
 <mxfile host="65bd71144e">
     <diagram name="Local AI Agent v1" id="0">
-        <mxGraphModel dx="1445" dy="731" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1900" pageHeight="1400" math="0" shadow="0">
+        <mxGraphModel dx="1536" dy="685" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1900" pageHeight="1400" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -25,32 +25,32 @@
                 <mxCell id="7" value="Code Generation Node&#xa;(code_generation_node)&#xa;Qwen2.5-Coder 7B" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;" parent="1" vertex="1">
                     <mxGeometry x="780" y="270" width="210" height="80" as="geometry"/>
                 </mxCell>
-                <mxCell id="8" value="Human Approval Node&#xa;(human_approval_node)&#xa;interrupt() -> approve / reject" style="rhombus;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" parent="1" vertex="1">
+                <mxCell id="8" value="Human Approval Node&#xa;(human_approval_node)&#xa;interrupt() -&gt; approve / reject" style="rhombus;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" parent="1" vertex="1">
                     <mxGeometry x="1060" y="240" width="220" height="120" as="geometry"/>
                 </mxCell>
                 <mxCell id="10" value="Tool Manager&#xa;(ToolNode)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=11;" parent="1" vertex="1">
                     <mxGeometry x="830" y="710" width="200" height="70" as="geometry"/>
                 </mxCell>
-                <mxCell id="5" value="Memory Manager&#xa;SqliteSaver -> memory.db&#xa;checkpoints after every node" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" parent="1" vertex="1">
+                <mxCell id="5" value="Memory Manager&#xa;SqliteSaver -&gt; memory.db&#xa;checkpoints after every node" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" parent="1" vertex="1">
                     <mxGeometry x="510" y="700" width="190" height="90" as="geometry"/>
                 </mxCell>
                 <mxCell id="11" value="search_web&#xa;DuckDuckGo, top 3" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
-                    <mxGeometry x="540" y="870" width="150" height="55" as="geometry"/>
+                    <mxGeometry x="540" y="857" width="150" height="55" as="geometry"/>
                 </mxCell>
                 <mxCell id="12" value="execute_code&#xa;Docker sandbox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
-                    <mxGeometry x="710" y="870" width="150" height="55" as="geometry"/>
+                    <mxGeometry x="710" y="857" width="150" height="55" as="geometry"/>
                 </mxCell>
-                <mxCell id="13" value="analyze_image&#xa;base64 -> VLM" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
-                    <mxGeometry x="880" y="870" width="150" height="55" as="geometry"/>
+                <mxCell id="13" value="analyze_image&#xa;base64 -&gt; VLM" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="880" y="857" width="150" height="55" as="geometry"/>
                 </mxCell>
-                <mxCell id="20" value="" style="edgeStyle=none;html=1;" edge="1" parent="1" source="14" target="13">
+                <mxCell id="20" value="" style="edgeStyle=none;html=1;" parent="1" source="14" target="13" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="14" value="analyze_video&#xa;OpenCV -> VLM" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
-                    <mxGeometry x="1050" y="870" width="150" height="55" as="geometry"/>
+                <mxCell id="14" value="analyze_video&#xa;OpenCV -&gt; VLM" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="1050" y="857" width="150" height="55" as="geometry"/>
                 </mxCell>
-                <mxCell id="15" value="analyze_document&#xa;pdfplumber/docx -> LLM" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
-                    <mxGeometry x="1220" y="870" width="160" height="55" as="geometry"/>
+                <mxCell id="15" value="analyze_document&#xa;pdfplumber/docx -&gt; LLM" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="1220" y="857" width="160" height="55" as="geometry"/>
                 </mxCell>
                 <mxCell id="17" value="Qwen2.5-Coder 7B&#xa;code generation" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;" parent="1" vertex="1">
                     <mxGeometry x="1360" y="277.5" width="160" height="65" as="geometry"/>
@@ -59,7 +59,7 @@
                     <mxGeometry x="1360" y="380" width="160" height="65" as="geometry"/>
                 </mxCell>
                 <mxCell id="18" value="Qwen2.5-VL 7B&#xa;vision (image + video)" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" parent="1" vertex="1">
-                    <mxGeometry x="1390" y="870" width="160" height="65" as="geometry"/>
+                    <mxGeometry x="1390" y="857" width="160" height="65" as="geometry"/>
                 </mxCell>
                 <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;" parent="1" source="2" target="3" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
@@ -88,16 +88,8 @@
                         </Array>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="e6" value="execute_code (not generated)" style="edgeStyle=orthogonalEdgeStyle;fontSize=9;" parent="1" source="6" target="7" edge="1">
+                <mxCell id="e6" value="execute_code" style="edgeStyle=orthogonalEdgeStyle;fontSize=9;" parent="1" source="6" target="7" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="e7" value="execute_code (generated)" style="edgeStyle=orthogonalEdgeStyle;fontSize=9;" parent="1" source="6" target="8" edge="1">
-                    <mxGeometry relative="1" as="geometry">
-                        <Array as="points">
-                            <mxPoint x="1020" y="520"/>
-                            <mxPoint x="1020" y="330"/>
-                        </Array>
-                    </mxGeometry>
                 </mxCell>
                 <mxCell id="e8" value="no tool call" style="edgeStyle=orthogonalEdgeStyle;fontSize=9;" parent="1" source="6" target="9" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
@@ -185,8 +177,8 @@
                 <mxCell id="e22" style="edgeStyle=orthogonalEdgeStyle;dashed=1;" parent="1" source="7" target="17" edge="1">
                     <mxGeometry relative="1" as="geometry">
                         <Array as="points">
-                            <mxPoint x="885" y="220"/>
-                            <mxPoint x="1440" y="220"/>
+                            <mxPoint x="885" y="230"/>
+                            <mxPoint x="1440" y="230"/>
                         </Array>
                     </mxGeometry>
                 </mxCell>

@@ -38,8 +38,7 @@ input_router_node (entry point)
     │                                                 ├── approved -> tool_node -> agent_node
     │                                                 └── rejected -> agent_node (rewrite + retry)
     └── all other types -> agent_node
-                              ├── execute_code call, code not yet generated -> code_generation_node
-                              ├── execute_code call, code already generated -> human_approval_node
+                              ├── execute_code call -> code_generation_node -> human_approval_node
                               ├── other tool call -> tool_node -> agent_node (ReAct loop)
                               └── no tool call -> output_parser_node
                                                      ├── valid -> END
@@ -68,13 +67,13 @@ input_router_node (entry point)
 - **Sequential tool calling**: Qwen2.5 7B calls one tool at a time. Multi-tool tasks require multiple ReAct cycles.
 - **Video analysis is one batched VLM call**: all sampled frames are sent in a single message. Memory-efficient but limits per-frame temporal reasoning.
 - **Document truncation**: extracted document text is truncated at 6000 characters. Long documents may have content cut off.
-- **Double approval box on rejection**: LangGraph interrupt() replay behavior causes the approval prompt to appear twice when code is rejected. Deferred to v2.
+- **Double approval box**: LangGraph interrupt() replay behavior causes the approval prompt and code display to appear twice on every human review step. Deferred to v2.
 - **Model swap latency**: LLM and VLM cannot coexist in 8GB VRAM. Ollama swaps automatically (~3-5s latency per swap).
 
 ## Components
 
 | Component | Responsibility | Input | Output | Status |
-|-----------|---------------|-------|--------|--------|
+| --------- | -------------- | ----- | ------ | ------ |
 | Input Router | classify user input and route to the right node | last user message | input_type ("code" / "media" / "general") | ✅ built |
 | Memory Manager | persist and retrieve conversation history from SQLite | user message + thread ID (read) / agent response (write) | conversation history (read) / confirmation (write) | ✅ built |
 | Agent (LangGraph graph) | orchestrate the full agent loop as a stateful graph with conditional edges | user message + conversation history | final response or tool call | ✅ built |
@@ -107,7 +106,7 @@ input_router_node (entry point)
 ## LLM hyperparameters
 
 | Parameter | What it controls | LLM value | VLM value | Why |
-|-----------|-----------------|-----------|-----------|-----|
+| --------- | ---------------- | --------- | --------- | --- |
 | temperature | randomness of model output | 0.1 | 0.1 | low value for precise reasoning and consistent tool-calling format |
 | num_ctx | max number of tokens in context window | 8192 | 32768 | VLM needs larger window to handle multi-frame image content |
 | top_p | cumulative probability threshold for nucleus sampling | 0.9 | 0.9 | standard default, filters low-probability tokens |
@@ -116,7 +115,7 @@ input_router_node (entry point)
 ## Tech stack
 
 | Layer | Tool | Why |
-|-------|------|-----|
+| ----- | ---- | --- |
 | Inference runtime | Ollama | local, simple setup, GGUF support, Python API, fully offline |
 | LLM (reasoning) | Qwen2.5 7B | reliable tool calling, fits 8GB VRAM |
 | LLM (code) | Qwen2.5-Coder 7B | specialized for code generation and optimization |
@@ -130,6 +129,7 @@ input_router_node (entry point)
 ## Implementation scope
 
 ### Built
+
 - Input Router (keyword pattern matching - 50+ patterns across code/media/document/general)
 - Agent node (LangGraph StateGraph, ReAct loop)
 - Code Generation node (specialized coder LLM, strips markdown fences from output)
@@ -146,6 +146,7 @@ input_router_node (entry point)
 - Message window trimming (last 20 messages per LLM call)
 
 ### Future improvements
+
 - Gradio or web UI (currently terminal only)
 - Docker image with pre-installed packages (numpy, pandas, etc.) for richer code execution
 - Context window summarization for long conversations (currently sliding window)
