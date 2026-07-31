@@ -88,6 +88,10 @@ local-ai-agent/
 
 > Note: LLM and VLM cannot coexist in 8GB VRAM. Ollama swaps models automatically with ~3-5s latency per swap.
 
+## Contributing
+
+This project's improvement backlog is tracked as [GitHub Issues](https://github.com/JadELHAJJ-prog/local-ai-agent/issues). See [CONTRIBUTING.md](CONTRIBUTING.md) for the branching strategy, naming conventions, and PR/review workflow before starting on an issue.
+
 ## Installation
 
 ### Prerequisites
