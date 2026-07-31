@@ -4,3 +4,6 @@
 memory.db
 .env
 .last_session
+.claude
+graphify-out/
+.pytest_cache/
