@@ -70,29 +70,52 @@ def make_state(**overrides):
 # ===========================================================================
 
 class TestInputRouterNode:
-    """input_router_node classifies the last message and writes input_type to state."""
+    """input_router_node classifies the last message and writes input_type to state.
 
-    def test_greeting_routes_to_general(self):
+    The code-vs-general decision is delegated to router_llm (an LLM structured-output
+    call), so every test that exercises that path mocks nodes.router_llm and never hits
+    a real Ollama instance. The file/media-marker path is deterministic string matching
+    and needs no mocking.
+    """
+
+    def _mock_decision(self, input_type):
+        decision = MagicMock()
+        decision.input_type = input_type
+        return decision
+
+    @patch("nodes.router_llm")
+    def test_greeting_routes_to_general(self, mock_router):
+        mock_router.invoke.return_value = self._mock_decision("general")
         state = make_state(messages=[HumanMessage(content="Hello, how are you?")])
         assert input_router_node(state)["input_type"] == "general"
 
-    def test_math_question_routes_to_general(self):
+    @patch("nodes.router_llm")
+    def test_math_question_routes_to_general(self, mock_router):
+        mock_router.invoke.return_value = self._mock_decision("general")
         state = make_state(messages=[HumanMessage(content="what is 2 plus 2?")])
         assert input_router_node(state)["input_type"] == "general"
 
-    def test_write_keyword_routes_to_code(self):
+    @patch("nodes.router_llm")
+    def test_write_keyword_routes_to_code(self, mock_router):
+        mock_router.invoke.return_value = self._mock_decision("code")
         state = make_state(messages=[HumanMessage(content="write a python function to sort a list")])
         assert input_router_node(state)["input_type"] == "code"
 
-    def test_generate_keyword_routes_to_code(self):
+    @patch("nodes.router_llm")
+    def test_generate_keyword_routes_to_code(self, mock_router):
+        mock_router.invoke.return_value = self._mock_decision("code")
         state = make_state(messages=[HumanMessage(content="generate a script to parse JSON")])
         assert input_router_node(state)["input_type"] == "code"
 
-    def test_implement_keyword_routes_to_code(self):
+    @patch("nodes.router_llm")
+    def test_implement_keyword_routes_to_code(self, mock_router):
+        mock_router.invoke.return_value = self._mock_decision("code")
         state = make_state(messages=[HumanMessage(content="implement a binary search")])
         assert input_router_node(state)["input_type"] == "code"
 
     def test_image_path_marker_routes_to_media(self):
+        # File/media markers are matched deterministically before the LLM classifier
+        # ever runs, so no router_llm mock is needed here.
         msg = "[image provided at path: /tmp/photo.png] what is in this image?"
         state = make_state(messages=[HumanMessage(content=msg)])
         assert input_router_node(state)["input_type"] == "media"
@@ -116,6 +139,74 @@ class TestInputRouterNode:
         msg = "analyze [file provided at path: /data/data.csv]"
         state = make_state(messages=[HumanMessage(content=msg)])
         assert input_router_node(state)["input_type"] == "document_csv"
+
+    # -- Cases the old CODE_PATTERNS keyword list got wrong (issue #1) --
+
+    @patch("nodes.router_llm")
+    def test_false_positive_casual_run_sentence_routes_to_general(self, mock_router):
+        # Old keyword list matched bare "run" anywhere in the message.
+        mock_router.invoke.return_value = self._mock_decision("general")
+        state = make_state(messages=[HumanMessage(content="I run every morning, any tips?")])
+        assert input_router_node(state)["input_type"] == "general"
+
+    @patch("nodes.router_llm")
+    def test_false_negative_paraphrased_code_request_routes_to_code(self, mock_router):
+        # Old keyword list had no phrase matching this paraphrase.
+        mock_router.invoke.return_value = self._mock_decision("code")
+        state = make_state(messages=[HumanMessage(content="spin me up something that reverses a string")])
+        assert input_router_node(state)["input_type"] == "code"
+
+    @patch("nodes.router_llm")
+    def test_false_positive_execute_in_casual_sentence_routes_to_general(self, mock_router):
+        # Old keyword list matched "execute" even in a non-code sentence.
+        mock_router.invoke.return_value = self._mock_decision("general")
+        state = make_state(messages=[HumanMessage(content="the company will execute its strategy next quarter")])
+        assert input_router_node(state)["input_type"] == "general"
+
+    @patch("nodes.router_llm")
+    def test_false_negative_build_me_something_routes_to_code(self, mock_router):
+        # Old keyword list didn't cover this phrasing of a code request.
+        mock_router.invoke.return_value = self._mock_decision("code")
+        state = make_state(messages=[HumanMessage(content="can you whip up a quick script that counts vowels")])
+        assert input_router_node(state)["input_type"] == "code"
+
+    # -- Indirect "I want/need something that ___" phrasings missed during manual
+    #    testing of the fix above; ROUTER_SYSTEM_PROMPT now covers this family
+    #    explicitly. These assert the plumbing (router_llm's decision reaches the
+    #    return value) - actual classification quality on these phrasings can only
+    #    be confirmed against a live Ollama instance, e.g. via `python src/main.py`.
+
+    @patch("nodes.router_llm")
+    def test_indirect_need_something_that_checks_routes_to_code(self, mock_router):
+        mock_router.invoke.return_value = self._mock_decision("code")
+        state = make_state(messages=[HumanMessage(content="I need something that checks whether a number is prime")])
+        assert input_router_node(state)["input_type"] == "code"
+
+    @patch("nodes.router_llm")
+    def test_indirect_give_me_something_that_removes_routes_to_code(self, mock_router):
+        mock_router.invoke.return_value = self._mock_decision("code")
+        state = make_state(messages=[HumanMessage(content="Give me something that removes duplicates from a list")])
+        assert input_router_node(state)["input_type"] == "code"
+
+    @patch("nodes.router_llm")
+    def test_indirect_want_something_that_renames_routes_to_code(self, mock_router):
+        mock_router.invoke.return_value = self._mock_decision("code")
+        state = make_state(messages=[HumanMessage(content="I want something that renames every file in a folder")])
+        assert input_router_node(state)["input_type"] == "code"
+
+    @patch("nodes.router_llm")
+    def test_classifier_failure_falls_back_to_keyword_match_for_code(self, mock_router):
+        # A classifier failure (Ollama unreachable, bad structured output, etc.) must
+        # not crash the graph - it should degrade to the old keyword heuristic.
+        mock_router.invoke.side_effect = Exception("Ollama unreachable")
+        state = make_state(messages=[HumanMessage(content="write a python function to sort a list")])
+        assert input_router_node(state)["input_type"] == "code"
+
+    @patch("nodes.router_llm")
+    def test_classifier_failure_falls_back_to_keyword_match_for_general(self, mock_router):
+        mock_router.invoke.side_effect = Exception("Ollama unreachable")
+        state = make_state(messages=[HumanMessage(content="hello there")])
+        assert input_router_node(state)["input_type"] == "general"
 
 
 class TestShouldRoute:

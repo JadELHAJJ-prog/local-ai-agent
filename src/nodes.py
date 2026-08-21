@@ -1,9 +1,11 @@
 import uuid
 from datetime import date
+from typing import Literal
 
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langgraph.types import interrupt
+from pydantic import BaseModel
 
 from state import AgentState
 from config import CODE_PATTERNS, APPROVAL_PHRASES, DOCUMENT_EXTENSIONS
@@ -12,6 +14,42 @@ from tools import tools
 
 # Bind tools to the reasoning LLM once at module load so every agent_node call reuses the same binding
 llm_with_tools = llm.bind_tools(tools)
+
+
+# Structured-output schema for input_router_node's code-vs-general decision
+class RouteDecision(BaseModel):
+    input_type: Literal["code", "general"]
+
+
+# Classifier chain used by input_router_node in place of CODE_PATTERNS keyword matching
+router_llm = llm.with_structured_output(RouteDecision)
+
+ROUTER_SYSTEM_PROMPT = """Classify the user's message as "code" or "general".
+
+"code" means the user is asking you to write, generate, create, implement, run, or execute \
+a piece of code, script, program, or function. This includes indirect phrasings like \
+"I need/want something that ___", "give me something that ___", or "can you make something \
+that ___" whenever the "___" describes a programming task (e.g. checking a condition, \
+transforming data, processing files) - the request doesn't have to use the word "code" or \
+"script" explicitly to still be a code request.
+"general" means anything else - greetings, questions, requests for information, casual \
+conversation, or simple math done in your head.
+
+Examples of "code":
+- "write a python function to sort a list"
+- "can you implement a binary search"
+- "run this script for me"
+- "spin me up something that reverses a string"
+- "I need something that checks whether a number is prime"
+- "give me something that removes duplicates from a list"
+- "I want something that renames every file in a folder"
+
+Examples of "general":
+- "hi, how are you?"
+- "what is 2+2"
+- "I run every morning, any tips?"
+- "who are you"
+"""
 
 # System prompt injected at runtime so the agent always knows today's date
 # MessagesPlaceholder passes the full conversation history into the prompt as-is
@@ -57,8 +95,9 @@ def trim_messages_window(messages: list, max_messages: int = 20) -> list:
 # Classify the input type so the graph can dispatch to the correct specialized node
 def input_router_node(state: AgentState) -> dict:
     last_message = state["messages"][-1]
-    # Normalize to lowercase for case-insensitive pattern matching
-    content = last_message.content.lower()
+    raw_content = last_message.content
+    # Normalize to lowercase for case-insensitive marker/extension matching
+    content = raw_content.lower()
 
     # File or media path was attached by parse_user_input: identify document type by extension
     if "[file provided at path:" in content or "[image provided at path:" in content:
@@ -69,12 +108,25 @@ def input_router_node(state: AgentState) -> dict:
         # Path present but extension is a media type, not a document format
         return {"input_type": "media"}
 
-    # One or more code-request keywords detected: skip the general agent, go to code generation
-    if any(pattern in content for pattern in CODE_PATTERNS):
-        return {"input_type": "code"}
+    # No file/media marker: classify code-vs-general with the LLM instead of keyword matching
+    return {"input_type": _classify_code_vs_general(raw_content)}
 
-    # Default path for greetings, questions, and anything not classified above
-    return {"input_type": "general"}
+
+def _classify_code_vs_general(content: str) -> str:
+    try:
+        decision = router_llm.invoke(
+            [
+                ("system", ROUTER_SYSTEM_PROMPT),
+                ("human", content),
+            ]
+        )
+        return decision.input_type
+    # Ollama unreachable, malformed structured output, etc. - degrade to the keyword
+    # heuristic rather than letting the router crash the graph
+    except Exception:
+        if any(pattern in content.lower() for pattern in CODE_PATTERNS):
+            return "code"
+        return "general"
 
 
 def should_route(state: AgentState) -> str:
