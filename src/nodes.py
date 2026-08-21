@@ -1,6 +1,8 @@
 import uuid
 from datetime import date
+from typing import Literal
 
+from pydantic import BaseModel
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langgraph.types import interrupt
@@ -54,6 +56,13 @@ def trim_messages_window(messages: list, max_messages: int = 20) -> list:
 
 
 # --- Router ---
+
+class RouteDecision(BaseModel):
+    input_type: Literal["code", "general"]
+
+
+router_llm = llm.with_structured_output(RouteDecision)
+
 # Classify the input type so the graph can dispatch to the correct specialized node
 def input_router_node(state: AgentState) -> dict:
     last_message = state["messages"][-1]
@@ -69,13 +78,69 @@ def input_router_node(state: AgentState) -> dict:
         # Path present but extension is a media type, not a document format
         return {"input_type": "media"}
 
-    # One or more code-request keywords detected: skip the general agent, go to code generation
-    if any(pattern in content for pattern in CODE_PATTERNS):
-        return {"input_type": "code"}
+    
+    try:
+        decision = router_llm.invoke(
+            [
+                (
+                    "system",
+                    """Classify the user's request as either "code" or "general".
 
-    # Default path for greetings, questions, and anything not classified above
-    return {"input_type": "general"}
+Classify as "code" when fulfilling the request would naturally require
+producing or modifying source code, a script, program, algorithm, automation,
+or other software solution.
 
+The user does NOT need to explicitly say "code", "Python", "script",
+"function", or "program". Infer the intended output from the full request.
+
+For example, a request to build something that:
+- processes or transforms data
+- manipulates strings or lists
+- performs an algorithm
+- reads or writes files
+- automates a task
+- computes or checks something programmatically
+
+If the user asks you to "make", "give", "create", or provide "something"
+that performs a computational or automated task, infer that they are
+requesting a software/code solution and classify it as "code".
+
+should be classified as "code" when the user is asking you to create
+the solution.
+
+Classify as "general" when the user wants an explanation, information,
+advice, discussion, or conceptual help without asking for a software solution.
+
+A useful question to apply is:
+"Would satisfying this request naturally involve giving the user source code?"
+If yes, classify as "code". Otherwise classify as "general".
+
+Judge the full intent, not individual keywords.
+
+Examples:
+- "Write a Python function that reverses a string." -> code
+- "Spin me up something that reverses a string." -> code
+- "Debug this Python function." -> code
+- "What is Python?" -> general
+- "I run every morning, any tips?" -> general
+- "How can I implement better study habits?" -> general
+- "What's the best way to debug a disagreement with a coworker?" -> general
+- "What's a good function for this room?" -> general
+""",
+                ),
+                ("human", last_message.content),
+            ]
+        )
+
+        return {"input_type": decision.input_type}
+
+    # If the classifier fails, fall back to the old keyword routing
+    # so the graph still works instead of crashing
+    except Exception:
+        if any(pattern in content for pattern in CODE_PATTERNS):
+            return {"input_type": "code"}
+
+        return {"input_type": "general"}
 
 def should_route(state: AgentState) -> str:
     input_type = state.get("input_type", "general")

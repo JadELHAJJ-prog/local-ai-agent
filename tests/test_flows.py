@@ -116,8 +116,104 @@ class TestInputRouterNode:
         msg = "analyze [file provided at path: /data/data.csv]"
         state = make_state(messages=[HumanMessage(content=msg)])
         assert input_router_node(state)["input_type"] == "document_csv"
+            
+    def test_run_every_morning_routes_to_general(self):
+        state = make_state(messages=[HumanMessage(content="I run every morning, any tips?")])
+        assert input_router_node(state)["input_type"] == "general"
 
 
+    def test_implement_study_habits_routes_to_general(self):
+        state = make_state(messages=[HumanMessage(content="How can I implement better study habits?")])
+        assert input_router_node(state)["input_type"] == "general"
+
+
+    def test_debug_disagreement_routes_to_general(self):
+        state = make_state(
+            messages=[HumanMessage(content="What's the best way to debug a disagreement with a coworker?")]
+        )
+        assert input_router_node(state)["input_type"] == "general"
+
+
+    def test_function_for_room_routes_to_general(self):
+        state = make_state(messages=[HumanMessage(content="What's a good function for this room?")])
+        assert input_router_node(state)["input_type"] == "general"
+
+
+    def test_optimize_daily_routine_routes_to_general(self):
+        state = make_state(messages=[HumanMessage(content="How can I optimize my daily routine?")])
+        assert input_router_node(state)["input_type"] == "general"
+
+
+    def test_reverse_string_request_routes_to_code(self):
+        state = make_state(
+            messages=[HumanMessage(content="Spin me up something that reverses a string.")]
+        )
+        assert input_router_node(state)["input_type"] == "code"
+
+
+    def test_csv_reader_request_routes_to_code(self):
+        state = make_state(
+            messages=[HumanMessage(content="Make me something that reads a CSV and prints every name.")]
+        )
+        assert input_router_node(state)["input_type"] == "code"
+
+
+    def test_prime_checker_request_routes_to_code(self):
+        state = make_state(
+            messages=[HumanMessage(content="I need something that checks whether a number is prime.")]
+        )
+        assert input_router_node(state)["input_type"] == "code"
+
+
+    def test_remove_duplicates_request_routes_to_code(self):
+        state = make_state(
+            messages=[HumanMessage(content="Give me something that removes duplicates from a list.")]
+        )
+        assert input_router_node(state)["input_type"] == "code"
+
+
+    def test_rename_files_request_routes_to_code(self):
+        state = make_state(
+            messages=[HumanMessage(content="I want something that renames every file in a folder.")]
+        )
+        assert input_router_node(state)["input_type"] == "code"
+    
+    @patch("nodes.router_llm")
+    def test_mocked_router_llm_routes_to_code(self, mock_router):
+        mock_router.invoke.return_value = MagicMock(input_type="code")
+
+        state = make_state(
+            messages=[HumanMessage(content="some programming request")]
+        )
+
+        result = input_router_node(state)
+
+        assert result["input_type"] == "code"
+
+
+    @patch("nodes.router_llm")
+    def test_mocked_router_llm_routes_to_general(self, mock_router):
+        mock_router.invoke.return_value = MagicMock(input_type="general")
+
+        state = make_state(
+            messages=[HumanMessage(content="some general request")]
+        )
+
+        result = input_router_node(state)
+
+        assert result["input_type"] == "general"
+
+    @patch("nodes.router_llm")
+    def test_router_llm_failure_falls_back_to_code_patterns(self, mock_router):
+        mock_router.invoke.side_effect = RuntimeError("Ollama unavailable")
+
+        state = make_state(
+            messages=[HumanMessage(content="write code to sort a list")]
+        )
+
+        with patch("nodes.CODE_PATTERNS", ["write code"]):
+            assert input_router_node(state)["input_type"] == "code"
+            
 class TestShouldRoute:
     """should_route reads input_type and returns the correct node name."""
 
