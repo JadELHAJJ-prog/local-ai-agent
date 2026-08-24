@@ -132,6 +132,12 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+If you're contributing (not just running the agent), also install the dev tooling used by CI:
+
+```bash
+pip install -r requirements-dev.txt
+```
+
 ### 4. Build the Docker sandbox
 
 ```bash

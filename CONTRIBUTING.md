@@ -88,6 +88,29 @@ One branch, one issue, one PR. If an issue turns out to need splitting into mult
 - `master` is only ever updated via a dedicated, separately reviewed PR from `dev` (a "release" PR) — not automatically, and not as a side effect of any individual issue PR.
 - Nobody pushes directly to `master` or `dev` under any circumstance, including small fixes or docs — everything goes through a branch and a PR.
 
+## Continuous integration
+
+Every PR into `dev` runs `.github/workflows/ci.yml` automatically. It checks:
+
+- **Tests** — `pytest tests/` on Python 3.11 and 3.12.
+- **Formatting** — `black --check src/ tests/`.
+- **Linting** — `ruff check src/ tests/`.
+- **Pinned dependencies** — every line in `requirements.txt`/`requirements-dev.txt` must be an exact `==` pin (`scripts/check_pinned_requirements.py`).
+- **Dependency vulnerability scan** — `pip-audit` (reports only for now; not yet a hard failure).
+- **Docker sandbox build** — confirms `docker/Dockerfile.sandbox` still builds.
+
+Run the same checks locally before pushing, so CI isn't the first place you find out:
+
+```bash
+pip install -r requirements-dev.txt
+pytest tests/ -v
+black --check src/ tests/
+ruff check src/ tests/
+python scripts/check_pinned_requirements.py
+```
+
+`black`/`ruff` findings are usually auto-fixable: `black src/ tests/` and `ruff check --fix src/ tests/`.
+
 ## Commit messages
 
 - Reference the issue number so history stays traceable: `Fix double approval prompt on rejection replay (#2)`.
@@ -99,4 +122,6 @@ One branch, one issue, one PR. If an issue turns out to need splitting into mult
 - [ ] Branch name follows the `<type>/<issue-number>-<slug>` convention.
 - [ ] The issue's acceptance criteria (from its GitHub description) are met.
 - [ ] Relevant tests pass: `pytest tests/ -v`.
+- [ ] `black --check src/ tests/` and `ruff check src/ tests/` are clean.
+- [ ] Any new/changed dependency in `requirements.txt`/`requirements-dev.txt` is exactly pinned (`==`).
 - [ ] The PR description links the issue (`Closes #N`) and summarizes the change.
