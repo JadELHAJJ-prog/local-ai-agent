@@ -31,20 +31,21 @@ def search_web(query: str) -> str:
             ]
         )
 
-
-@tool
-def execute_code(code: str) -> str:
-    """Execute Python code safely in an isolated Docker container.
-    Use this when the user asks to run code, perform calculations,
-    or test a Python script. Input should be valid Python code."""
+def run_code_in_sandbox(code: str) -> str:
+    """Run Python code inside the isolated Docker sandbox."""
     tmp_path = None
+
     try:
-        # Write the code to a temp file so Docker can mount it read-only into the container
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tmp:
+        # Write the code to a temporary Python file
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".py",
+            delete=False
+        ) as tmp:
             tmp.write(code)
             tmp_path = tmp.name
 
-        # Resource-constrained Docker run: no network, 128MB RAM cap, 0.5 CPU, 30s timeout
+        # Run the temporary Python file inside Docker
         result = subprocess.run(
             [
                 "docker",
@@ -67,24 +68,31 @@ def execute_code(code: str) -> str:
             timeout=30,
         )
 
-        # Distinguish a clean exit from a non-zero error exit
+        # Check whether the code ran successfully
         if result.returncode == 0:
             return result.stdout or "Code executed successfully with no output."
-        else:
-            return f"Error:\n{result.stderr}"
 
-    # Surface timeout as a user-readable message instead of a raw exception
+        return f"Error:\n{result.stderr}"
+
     except subprocess.TimeoutExpired:
         return "Error: Code execution timed out after 30 seconds."
-    # Catch Docker not found, permission errors, or any other unexpected failure
+
     except Exception as e:
         return f"Error: {e}"
+
     finally:
-        # Always delete the temp file even if execution failed or timed out
         if tmp_path and os.path.exists(tmp_path):
             os.remove(tmp_path)
 
 
+@tool
+def execute_code(code: str) -> str:
+    """Execute Python code safely in an isolated Docker container.
+    Use this when the user asks to run code, perform calculations,
+    or test a Python script. Input should be valid Python code.
+    """
+    return run_code_in_sandbox(code)
+    
 @tool
 def analyze_image(image_path: str, question: str = "What is in this image?") -> str:
     """Analyze an image using vision AI. Use this when the user

@@ -9,6 +9,7 @@ from state import AgentState
 from config import CODE_PATTERNS, APPROVAL_PHRASES, DOCUMENT_EXTENSIONS
 from models import llm, coder_llm
 from tools import tools
+from tools import run_code_in_sandbox
 
 # Bind tools to the reasoning LLM once at module load so every agent_node call reuses the same binding
 llm_with_tools = llm.bind_tools(tools)
@@ -114,6 +115,8 @@ def should_use_tool(state: AgentState) -> str:
 
 
 # --- Code generation ---
+MAX_CODE_ATTEMPTS = 3
+
 def _build_code_prompt(action: str, content: str) -> str:
     # Shared instruction header ensures both generation and improvement paths use identical format rules
     return (
@@ -121,6 +124,64 @@ def _build_code_prompt(action: str, content: str) -> str:
         f"{action}. Return ONLY raw Python code, no markdown, no explanation:\n\n{content}"
     )
 
+def _build_code_repair_prompt(
+    original_request: str,
+    code: str,
+    error: str,
+) -> str:
+    repair_context = (
+        f"Original user request:\n{original_request}\n\n"
+        f"Previous code:\n{code}\n\n"
+        f"Sandbox execution error:\n{error}\n\n"
+        "Fix the code so it satisfies the original request and resolves "
+        "the execution error. Do not repeat the same failing approach. "
+        "If a dependency is unavailable in the sandbox, replace it with an "
+        "available standard-library alternative or add a safe fallback."
+    )
+
+    return _build_code_prompt(
+        "Fix this Python code using the execution error below",
+        repair_context,
+    )
+
+def _strip_markdown(text: str) -> str:
+    # Model used a python-tagged fence: extract the block between the opening and closing backticks
+    if "```python" in text:
+        return text.split("```python")[1].split("```")[0].strip()
+    # Model used a generic fence with no language tag: extract between the first pair of backticks
+    if "```" in text:
+        return text.split("```")[1].split("```")[0].strip()
+    # No fences found: the model returned raw code, use the text directly
+    return text
+
+
+def _debug_code_in_sandbox(original_request: str, code: str) -> str:
+    for attempt in range(MAX_CODE_ATTEMPTS):
+        result = run_code_in_sandbox(code)
+        
+
+        # No error: code worked, so stop retrying
+        if not result.startswith("Error:"):
+            return code
+
+        # This was the final allowed attempt
+        if attempt == MAX_CODE_ATTEMPTS - 1:
+            return code
+
+        # Ask the coder to repair the failed code
+        repair_prompt = _build_code_repair_prompt(
+            original_request=original_request,
+            code=code,
+            error=result,
+        )
+
+        response = coder_llm.invoke(
+            [HumanMessage(content=repair_prompt)]
+        )
+
+        code = _strip_markdown(response.content)
+
+    return code
 
 def code_generation_node(state: AgentState) -> dict:
     last_message = state["messages"][-1]
@@ -132,7 +193,10 @@ def code_generation_node(state: AgentState) -> dict:
             [HumanMessage(content=_build_code_prompt("Write Python code for this task", user_request))]
         )
         code = _strip_markdown(response.content)
-
+        code = _debug_code_in_sandbox(
+            original_request=user_request,
+            code=code,
+        )
         # Wrap the generated code in an AIMessage that looks like a tool call so ToolNode can run it
         new_message = AIMessage(
             content="",
@@ -147,13 +211,30 @@ def code_generation_node(state: AgentState) -> dict:
         )
         return {"messages": [new_message]}
 
-    # Agent entry point: the LLM already proposed rough code, pass it to the coder model for improvement
     tool_call = last_message.tool_calls[0]
+
     rough_code = tool_call["args"]["code"]
+
+    # Find the user request that led to this execute_code call
+    user_request = next(
+        (
+            message.content
+            for message in reversed(state["messages"])
+            if isinstance(message, HumanMessage)
+        ),
+        rough_code,
+    )
+
     response = coder_llm.invoke(
         [HumanMessage(content=_build_code_prompt("Improve and optimize this code", rough_code))]
     )
     improved_code = _strip_markdown(response.content)
+
+    # NEW: test/fix the improved code before human approval
+    improved_code = _debug_code_in_sandbox(
+        original_request=user_request,
+        code=improved_code,
+    )
 
     # Preserve the original message id and tool call id so LangGraph message deduplication works correctly
     updated_message = AIMessage(
@@ -169,18 +250,6 @@ def code_generation_node(state: AgentState) -> dict:
         ],
     )
     return {"messages": [updated_message]}
-
-
-def _strip_markdown(text: str) -> str:
-    # Model used a python-tagged fence: extract the block between the opening and closing backticks
-    if "```python" in text:
-        return text.split("```python")[1].split("```")[0].strip()
-    # Model used a generic fence with no language tag: extract between the first pair of backticks
-    if "```" in text:
-        return text.split("```")[1].split("```")[0].strip()
-    # No fences found: the model returned raw code, use the text directly
-    return text
-
 
 # --- Human approval ---
 # Pause graph execution and surface the pending tool call for human review before running it

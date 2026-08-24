@@ -281,6 +281,76 @@ class TestCodeGenerationNode:
         assert result["messages"][0].id == "original-id"
         assert result["messages"][0].tool_calls[0]["id"] == "call-99"
 
+class TestCodeSelfDebugLoop:
+
+    @patch("nodes.run_code_in_sandbox")
+    @patch("nodes.coder_llm")
+    def test_code_succeeds_on_first_attempt(self, mock_coder, mock_sandbox):
+        from nodes import _debug_code_in_sandbox
+
+        mock_sandbox.return_value = "hello"
+
+        result = _debug_code_in_sandbox(
+            original_request="Print hello",
+            code='print("hello")',
+        )
+
+        assert result == 'print("hello")'
+        assert mock_sandbox.call_count == 1
+        mock_coder.invoke.assert_not_called()
+
+
+    @patch("nodes.run_code_in_sandbox")
+    @patch("nodes.coder_llm")
+    def test_code_repairs_after_failure(self, mock_coder, mock_sandbox):
+        from nodes import _debug_code_in_sandbox
+
+        broken_code = "print(x)"
+        fixed_code = 'x = "hello"\nprint(x)'
+
+        mock_sandbox.side_effect = [
+            "Error:\nNameError: name 'x' is not defined",
+            "hello",
+        ]
+
+        mock_coder.invoke.return_value = MagicMock(
+            content=fixed_code
+        )
+
+        result = _debug_code_in_sandbox(
+            original_request="Print hello",
+            code=broken_code,
+        )
+
+        assert result == fixed_code
+        assert mock_sandbox.call_count == 2
+        assert mock_coder.invoke.call_count == 1
+
+
+    @patch("nodes.run_code_in_sandbox")
+    @patch("nodes.coder_llm")
+    def test_code_stops_after_three_failed_attempts(
+        self,
+        mock_coder,
+        mock_sandbox,
+    ):
+        from nodes import _debug_code_in_sandbox
+
+        mock_sandbox.return_value = "Error:\nSomething went wrong"
+
+        mock_coder.invoke.side_effect = [
+            MagicMock(content="broken version 2"),
+            MagicMock(content="broken version 3"),
+        ]
+
+        result = _debug_code_in_sandbox(
+            original_request="Do something",
+            code="broken version 1",
+        )
+
+        assert result == "broken version 3"
+        assert mock_sandbox.call_count == 3
+        assert mock_coder.invoke.call_count == 2
 
 # ===========================================================================
 # Flow 4 — human_approval_node + should_execute_tool
@@ -536,46 +606,52 @@ class TestAnalyzeImage:
         assert "Error" in result and "not found" in result
 
     @patch("tools.vlm")
-    @patch("tools.os.path.exists", return_value=True)
-    @patch("builtins.open", create=True)
-    def test_successful_analysis_returns_vlm_content(self, mock_open, _, mock_vlm):
+    def test_successful_analysis_returns_vlm_content(self, mock_vlm, tmp_path):
         from tools import analyze_image
-        mock_file = MagicMock()
-        mock_file.__enter__ = MagicMock(return_value=MagicMock(read=MagicMock(return_value=b"bytes")))
-        mock_file.__exit__ = MagicMock(return_value=False)
-        mock_open.return_value = mock_file
-        mock_vlm.invoke.return_value = MagicMock(content="A cat on a table")
-        result = analyze_image.invoke({"image_path": "/tmp/photo.jpg"})
+
+        image_path = tmp_path / "photo.jpg"
+        image_path.write_bytes(b"bytes")
+
+        mock_vlm.invoke.return_value = MagicMock(
+            content="A cat on a table"
+        )
+
+        result = analyze_image.invoke(
+            {"image_path": str(image_path)}
+        )
+
         assert result == "A cat on a table"
 
     @patch("tools.vlm")
-    @patch("tools.os.path.exists", return_value=True)
-    @patch("builtins.open", create=True)
-    def test_png_file_uses_image_png_mime_type(self, mock_open, _, mock_vlm):
+    def test_png_file_uses_image_png_mime_type(self, mock_vlm, tmp_path):
         from tools import analyze_image
-        mock_file = MagicMock()
-        mock_file.__enter__ = MagicMock(return_value=MagicMock(read=MagicMock(return_value=b"bytes")))
-        mock_file.__exit__ = MagicMock(return_value=False)
-        mock_open.return_value = mock_file
+
+        image_path = tmp_path / "photo.png"
+        image_path.write_bytes(b"bytes")
+
         mock_vlm.invoke.return_value = MagicMock(content="description")
-        analyze_image.invoke({"image_path": "/tmp/photo.png"})
+
+        analyze_image.invoke({"image_path": str(image_path)})
+
         call_args = mock_vlm.invoke.call_args[0][0]
         url = call_args[0].content[1]["image_url"]["url"]
+
         assert url.startswith("data:image/png;base64,")
 
     @patch("tools.vlm")
-    @patch("tools.os.path.exists", return_value=True)
-    @patch("builtins.open", create=True)
-    def test_jpg_file_uses_image_jpeg_mime_type(self, mock_open, _, mock_vlm):
+    def test_jpg_file_uses_image_jpeg_mime_type(self, mock_vlm, tmp_path):
         from tools import analyze_image
-        mock_file = MagicMock()
-        mock_file.__enter__ = MagicMock(return_value=MagicMock(read=MagicMock(return_value=b"bytes")))
-        mock_file.__exit__ = MagicMock(return_value=False)
-        mock_open.return_value = mock_file
+
+        image_path = tmp_path / "photo.jpg"
+        image_path.write_bytes(b"bytes")
+
         mock_vlm.invoke.return_value = MagicMock(content="description")
-        analyze_image.invoke({"image_path": "/tmp/photo.jpg"})
+
+        analyze_image.invoke({"image_path": str(image_path)})
+
         call_args = mock_vlm.invoke.call_args[0][0]
         url = call_args[0].content[1]["image_url"]["url"]
+
         assert url.startswith("data:image/jpeg;base64,")
 
     @patch("tools.vlm")
