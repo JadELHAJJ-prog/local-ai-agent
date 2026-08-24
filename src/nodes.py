@@ -86,47 +86,29 @@ def input_router_node(state: AgentState) -> dict:
                     "system",
                     """Classify the user's request as either "code" or "general".
 
-Classify as "code" when fulfilling the request would naturally require
-producing or modifying source code, a script, program, algorithm, automation,
-or other software solution.
+"code" means the user is asking you to write, generate, create, implement, run, or execute \
+a piece of code, script, program, or function. This includes indirect phrasings like \
+"I need/want something that ___", "give me something that ___", or "can you make something \
+that ___" whenever the "___" describes a programming task (e.g. checking a condition, \
+transforming data, processing files) - the request doesn't have to use the word "code" or \
+"script" explicitly to still be a code request.
+"general" means anything else - greetings, questions, requests for information, casual \
+conversation, or simple math done in your head.
 
-The user does NOT need to explicitly say "code", "Python", "script",
-"function", or "program". Infer the intended output from the full request.
+Examples of "code":
+- "write a python function to sort a list"
+- "can you implement a binary search"
+- "run this script for me"
+- "spin me up something that reverses a string"
+- "I need something that checks whether a number is prime"
+- "give me something that removes duplicates from a list"
+- "I want something that renames every file in a folder"
 
-For example, a request to build something that:
-- processes or transforms data
-- manipulates strings or lists
-- performs an algorithm
-- reads or writes files
-- automates a task
-- computes or checks something programmatically
-
-If the user asks you to "make", "give", "create", or provide "something"
-that performs a computational or automated task, infer that they are
-requesting a software/code solution and classify it as "code".
-
-should be classified as "code" when the user is asking you to create
-the solution.
-
-Classify as "general" when the user wants an explanation, information,
-advice, discussion, or conceptual help without asking for a software solution.
-
-A useful question to apply is:
-"Would satisfying this request naturally involve giving the user source code?"
-If yes, classify as "code". Otherwise classify as "general".
-
-Judge the full intent, not individual keywords.
-
-Examples:
-- "Write a Python function that reverses a string." -> code
-- "Spin me up something that reverses a string." -> code
-- "Debug this Python function." -> code
-- "What is Python?" -> general
-- "I run every morning, any tips?" -> general
-- "How can I implement better study habits?" -> general
-- "What's the best way to debug a disagreement with a coworker?" -> general
-- "What's a good function for this room?" -> general
-""",
+Examples of "general":
+- "hi, how are you?"
+- "what is 2+2"
+- "I run every morning, any tips?"
+- "who are you" """,
                 ),
                 ("human", last_message.content),
             ]
