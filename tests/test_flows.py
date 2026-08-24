@@ -20,16 +20,14 @@ Flows covered:
   Flow 12 - parse_user_input (main.py utility)
 """
 
-import io
 import os
 import subprocess
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, mock_open, patch
 
-import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
 from nodes import (
@@ -46,10 +44,10 @@ from nodes import (
     trim_messages_window,
 )
 
-
 # ---------------------------------------------------------------------------
 # Shared helper: build a minimal AgentState dict
 # ---------------------------------------------------------------------------
+
 
 def make_state(**overrides):
     base = {
@@ -69,6 +67,7 @@ def make_state(**overrides):
 # Flow 1 — input_router_node + should_route
 # ===========================================================================
 
+
 class TestInputRouterNode:
     """input_router_node classifies the last message and writes input_type to state."""
 
@@ -81,11 +80,15 @@ class TestInputRouterNode:
         assert input_router_node(state)["input_type"] == "general"
 
     def test_write_keyword_routes_to_code(self):
-        state = make_state(messages=[HumanMessage(content="write a python function to sort a list")])
+        state = make_state(
+            messages=[HumanMessage(content="write a python function to sort a list")]
+        )
         assert input_router_node(state)["input_type"] == "code"
 
     def test_generate_keyword_routes_to_code(self):
-        state = make_state(messages=[HumanMessage(content="generate a script to parse JSON")])
+        state = make_state(
+            messages=[HumanMessage(content="generate a script to parse JSON")]
+        )
         assert input_router_node(state)["input_type"] == "code"
 
     def test_implement_keyword_routes_to_code(self):
@@ -143,6 +146,7 @@ class TestShouldRoute:
 # Flow 2 — agent_node + should_use_tool
 # ===========================================================================
 
+
 class TestShouldUseTool:
     """should_use_tool inspects the last AIMessage and picks the next node."""
 
@@ -153,35 +157,70 @@ class TestShouldUseTool:
     def test_execute_code_call_goes_to_code_generation(self):
         msg = AIMessage(
             content="",
-            tool_calls=[{"name": "execute_code", "args": {"code": "print(1)"}, "id": "c1", "type": "tool_call"}],
+            tool_calls=[
+                {
+                    "name": "execute_code",
+                    "args": {"code": "print(1)"},
+                    "id": "c1",
+                    "type": "tool_call",
+                }
+            ],
         )
         assert should_use_tool(make_state(messages=[msg])) == "code_generation_node"
 
     def test_search_web_call_goes_to_tool_node(self):
         msg = AIMessage(
             content="",
-            tool_calls=[{"name": "search_web", "args": {"query": "AI"}, "id": "c2", "type": "tool_call"}],
+            tool_calls=[
+                {
+                    "name": "search_web",
+                    "args": {"query": "AI"},
+                    "id": "c2",
+                    "type": "tool_call",
+                }
+            ],
         )
         assert should_use_tool(make_state(messages=[msg])) == "tool_node"
 
     def test_analyze_image_call_goes_to_tool_node(self):
         msg = AIMessage(
             content="",
-            tool_calls=[{"name": "analyze_image", "args": {"image_path": "/x.png"}, "id": "c3", "type": "tool_call"}],
+            tool_calls=[
+                {
+                    "name": "analyze_image",
+                    "args": {"image_path": "/x.png"},
+                    "id": "c3",
+                    "type": "tool_call",
+                }
+            ],
         )
         assert should_use_tool(make_state(messages=[msg])) == "tool_node"
 
     def test_analyze_video_call_goes_to_tool_node(self):
         msg = AIMessage(
             content="",
-            tool_calls=[{"name": "analyze_video", "args": {"video_path": "/x.mp4"}, "id": "c4", "type": "tool_call"}],
+            tool_calls=[
+                {
+                    "name": "analyze_video",
+                    "args": {"video_path": "/x.mp4"},
+                    "id": "c4",
+                    "type": "tool_call",
+                }
+            ],
         )
         assert should_use_tool(make_state(messages=[msg])) == "tool_node"
 
     def test_analyze_document_call_goes_to_tool_node(self):
         msg = AIMessage(
             content="",
-            tool_calls=[{"name": "analyze_document", "args": {"file_path": "/x.pdf"}, "id": "c5", "type": "tool_call"}],
+            tool_calls=[
+                {
+                    "name": "analyze_document",
+                    "args": {"file_path": "/x.pdf"},
+                    "id": "c5",
+                    "type": "tool_call",
+                }
+            ],
         )
         assert should_use_tool(make_state(messages=[msg])) == "tool_node"
 
@@ -189,6 +228,7 @@ class TestShouldUseTool:
 # ===========================================================================
 # Flow 3 — code_generation_node + helpers
 # ===========================================================================
+
 
 class TestBuildCodePrompt:
     """_build_code_prompt composes the instruction header for the coder LLM."""
@@ -241,7 +281,9 @@ class TestCodeGenerationNode:
     @patch("nodes.coder_llm")
     def test_router_entry_creates_execute_code_tool_call(self, mock_coder):
         mock_coder.invoke.return_value = self._mock_coder_response("print('hello')")
-        state = make_state(messages=[HumanMessage(content="write a hello world script")])
+        state = make_state(
+            messages=[HumanMessage(content="write a hello world script")]
+        )
         result = code_generation_node(state)
         msg = result["messages"][0]
         assert isinstance(msg, AIMessage)
@@ -250,18 +292,31 @@ class TestCodeGenerationNode:
 
     @patch("nodes.coder_llm")
     def test_router_entry_strips_markdown_from_coder_output(self, mock_coder):
-        mock_coder.invoke.return_value = self._mock_coder_response("```python\nprint('hello')\n```")
-        state = make_state(messages=[HumanMessage(content="write a hello world script")])
+        mock_coder.invoke.return_value = self._mock_coder_response(
+            "```python\nprint('hello')\n```"
+        )
+        state = make_state(
+            messages=[HumanMessage(content="write a hello world script")]
+        )
         result = code_generation_node(state)
         assert result["messages"][0].tool_calls[0]["args"]["code"] == "print('hello')"
 
     @patch("nodes.coder_llm")
     def test_agent_entry_improves_rough_code(self, mock_coder):
-        mock_coder.invoke.return_value = self._mock_coder_response("x = [i for i in range(10)]")
+        mock_coder.invoke.return_value = self._mock_coder_response(
+            "x = [i for i in range(10)]"
+        )
         rough_msg = AIMessage(
             id="msg-1",
             content="",
-            tool_calls=[{"name": "execute_code", "args": {"code": "x = list(range(10))"}, "id": "call-1", "type": "tool_call"}],
+            tool_calls=[
+                {
+                    "name": "execute_code",
+                    "args": {"code": "x = list(range(10))"},
+                    "id": "call-1",
+                    "type": "tool_call",
+                }
+            ],
         )
         state = make_state(messages=[rough_msg])
         result = code_generation_node(state)
@@ -274,7 +329,14 @@ class TestCodeGenerationNode:
         rough_msg = AIMessage(
             id="original-id",
             content="",
-            tool_calls=[{"name": "execute_code", "args": {"code": "pass"}, "id": "call-99", "type": "tool_call"}],
+            tool_calls=[
+                {
+                    "name": "execute_code",
+                    "args": {"code": "pass"},
+                    "id": "call-99",
+                    "type": "tool_call",
+                }
+            ],
         )
         state = make_state(messages=[rough_msg])
         result = code_generation_node(state)
@@ -286,13 +348,21 @@ class TestCodeGenerationNode:
 # Flow 4 — human_approval_node + should_execute_tool
 # ===========================================================================
 
+
 class TestHumanApprovalNode:
     """human_approval_node interrupts the graph and records the human decision."""
 
     def _state_with_execute_code(self, code="print('hello')"):
         msg = AIMessage(
             content="",
-            tool_calls=[{"name": "execute_code", "args": {"code": code}, "id": "call-1", "type": "tool_call"}],
+            tool_calls=[
+                {
+                    "name": "execute_code",
+                    "args": {"code": code},
+                    "id": "call-1",
+                    "type": "tool_call",
+                }
+            ],
         )
         return make_state(messages=[msg])
 
@@ -357,6 +427,7 @@ class TestShouldExecuteTool:
 # Flow 5 — output_parser_node + should_retry
 # ===========================================================================
 
+
 class TestOutputParserNode:
     """output_parser_node validates the last message and tracks retries."""
 
@@ -410,12 +481,14 @@ class TestShouldRetry:
 # Flow 6 — search_web tool
 # ===========================================================================
 
+
 class TestSearchWeb:
     """search_web wraps DuckDuckGo and formats results as readable text."""
 
     @patch("tools.DDGS")
     def test_formats_results_as_title_url_summary(self, mock_ddgs_class):
         from tools import search_web
+
         mock_ctx = MagicMock()
         mock_ddgs_class.return_value.__enter__ = MagicMock(return_value=mock_ctx)
         mock_ddgs_class.return_value.__exit__ = MagicMock(return_value=False)
@@ -430,6 +503,7 @@ class TestSearchWeb:
     @patch("tools.DDGS")
     def test_returns_no_results_message_on_empty_response(self, mock_ddgs_class):
         from tools import search_web
+
         mock_ctx = MagicMock()
         mock_ddgs_class.return_value.__enter__ = MagicMock(return_value=mock_ctx)
         mock_ddgs_class.return_value.__exit__ = MagicMock(return_value=False)
@@ -440,6 +514,7 @@ class TestSearchWeb:
     @patch("tools.DDGS")
     def test_multiple_results_are_all_included(self, mock_ddgs_class):
         from tools import search_web
+
         mock_ctx = MagicMock()
         mock_ddgs_class.return_value.__enter__ = MagicMock(return_value=mock_ctx)
         mock_ddgs_class.return_value.__exit__ = MagicMock(return_value=False)
@@ -456,6 +531,7 @@ class TestSearchWeb:
 # Flow 7 — execute_code tool
 # ===========================================================================
 
+
 class TestExecuteCode:
     """execute_code writes code to a temp file, runs it in Docker, and returns output."""
 
@@ -471,8 +547,11 @@ class TestExecuteCode:
     @patch("tools.os.path.exists", return_value=True)
     @patch("tools.subprocess.run")
     @patch("tools.tempfile.NamedTemporaryFile")
-    def test_success_returns_stdout(self, mock_tmpfile, mock_run, mock_exists, mock_remove):
+    def test_success_returns_stdout(
+        self, mock_tmpfile, mock_run, mock_exists, mock_remove
+    ):
         from tools import execute_code
+
         self._setup_tmpfile_mock(mock_tmpfile)
         mock_run.return_value = MagicMock(returncode=0, stdout="Hello\n", stderr="")
         result = execute_code.invoke({"code": "print('Hello')"})
@@ -482,10 +561,15 @@ class TestExecuteCode:
     @patch("tools.os.path.exists", return_value=True)
     @patch("tools.subprocess.run")
     @patch("tools.tempfile.NamedTemporaryFile")
-    def test_nonzero_exit_returns_stderr(self, mock_tmpfile, mock_run, mock_exists, mock_remove):
+    def test_nonzero_exit_returns_stderr(
+        self, mock_tmpfile, mock_run, mock_exists, mock_remove
+    ):
         from tools import execute_code
+
         self._setup_tmpfile_mock(mock_tmpfile)
-        mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="NameError: x")
+        mock_run.return_value = MagicMock(
+            returncode=1, stdout="", stderr="NameError: x"
+        )
         result = execute_code.invoke({"code": "print(x)"})
         assert "Error" in result
         assert "NameError" in result
@@ -494,8 +578,11 @@ class TestExecuteCode:
     @patch("tools.os.path.exists", return_value=True)
     @patch("tools.subprocess.run", side_effect=subprocess.TimeoutExpired("docker", 30))
     @patch("tools.tempfile.NamedTemporaryFile")
-    def test_timeout_returns_timeout_message(self, mock_tmpfile, mock_run, mock_exists, mock_remove):
+    def test_timeout_returns_timeout_message(
+        self, mock_tmpfile, mock_run, mock_exists, mock_remove
+    ):
         from tools import execute_code
+
         self._setup_tmpfile_mock(mock_tmpfile)
         result = execute_code.invoke({"code": "import time; time.sleep(100)"})
         assert "timed out" in result.lower()
@@ -504,8 +591,11 @@ class TestExecuteCode:
     @patch("tools.os.path.exists", return_value=True)
     @patch("tools.subprocess.run", side_effect=Exception("Docker not found"))
     @patch("tools.tempfile.NamedTemporaryFile")
-    def test_unexpected_exception_returns_error(self, mock_tmpfile, mock_run, mock_exists, mock_remove):
+    def test_unexpected_exception_returns_error(
+        self, mock_tmpfile, mock_run, mock_exists, mock_remove
+    ):
         from tools import execute_code
+
         self._setup_tmpfile_mock(mock_tmpfile)
         result = execute_code.invoke({"code": "print(1)"})
         assert "Error" in result
@@ -514,8 +604,11 @@ class TestExecuteCode:
     @patch("tools.os.path.exists", return_value=True)
     @patch("tools.subprocess.run")
     @patch("tools.tempfile.NamedTemporaryFile")
-    def test_no_stdout_returns_success_message(self, mock_tmpfile, mock_run, mock_exists, mock_remove):
+    def test_no_stdout_returns_success_message(
+        self, mock_tmpfile, mock_run, mock_exists, mock_remove
+    ):
         from tools import execute_code
+
         self._setup_tmpfile_mock(mock_tmpfile)
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
         result = execute_code.invoke({"code": "x = 1"})
@@ -526,37 +619,39 @@ class TestExecuteCode:
 # Flow 8 — analyze_image tool
 # ===========================================================================
 
+
 class TestAnalyzeImage:
     """analyze_image encodes the file and sends it to the VLM with the correct MIME type."""
 
     @patch("tools.os.path.exists", return_value=False)
     def test_missing_file_returns_error(self, _):
         from tools import analyze_image
+
         result = analyze_image.invoke({"image_path": "/nonexistent/photo.jpg"})
         assert "Error" in result and "not found" in result
 
     @patch("tools.vlm")
     @patch("tools.os.path.exists", return_value=True)
-    @patch("builtins.open", create=True)
-    def test_successful_analysis_returns_vlm_content(self, mock_open, _, mock_vlm):
+    @patch("builtins.open", new_callable=mock_open, read_data=b"bytes")
+    def test_successful_analysis_returns_vlm_content(self, _mock_open, _, mock_vlm):
+        # unittest.mock.mock_open (not a hand-rolled MagicMock) is required here:
+        # analyze_image's mimetypes.guess_type() call lazily reads real files
+        # (e.g. /etc/mime.types) via open() on its first-ever invocation in the
+        # process. A plain MagicMock's readline() never returns "" to signal
+        # EOF, so mimetypes' internal parse loop spins forever; mock_open
+        # correctly implements read/readline/iteration semantics instead.
         from tools import analyze_image
-        mock_file = MagicMock()
-        mock_file.__enter__ = MagicMock(return_value=MagicMock(read=MagicMock(return_value=b"bytes")))
-        mock_file.__exit__ = MagicMock(return_value=False)
-        mock_open.return_value = mock_file
+
         mock_vlm.invoke.return_value = MagicMock(content="A cat on a table")
         result = analyze_image.invoke({"image_path": "/tmp/photo.jpg"})
         assert result == "A cat on a table"
 
     @patch("tools.vlm")
     @patch("tools.os.path.exists", return_value=True)
-    @patch("builtins.open", create=True)
-    def test_png_file_uses_image_png_mime_type(self, mock_open, _, mock_vlm):
+    @patch("builtins.open", new_callable=mock_open, read_data=b"bytes")
+    def test_png_file_uses_image_png_mime_type(self, _mock_open, _, mock_vlm):
         from tools import analyze_image
-        mock_file = MagicMock()
-        mock_file.__enter__ = MagicMock(return_value=MagicMock(read=MagicMock(return_value=b"bytes")))
-        mock_file.__exit__ = MagicMock(return_value=False)
-        mock_open.return_value = mock_file
+
         mock_vlm.invoke.return_value = MagicMock(content="description")
         analyze_image.invoke({"image_path": "/tmp/photo.png"})
         call_args = mock_vlm.invoke.call_args[0][0]
@@ -565,13 +660,10 @@ class TestAnalyzeImage:
 
     @patch("tools.vlm")
     @patch("tools.os.path.exists", return_value=True)
-    @patch("builtins.open", create=True)
-    def test_jpg_file_uses_image_jpeg_mime_type(self, mock_open, _, mock_vlm):
+    @patch("builtins.open", new_callable=mock_open, read_data=b"bytes")
+    def test_jpg_file_uses_image_jpeg_mime_type(self, _mock_open, _, mock_vlm):
         from tools import analyze_image
-        mock_file = MagicMock()
-        mock_file.__enter__ = MagicMock(return_value=MagicMock(read=MagicMock(return_value=b"bytes")))
-        mock_file.__exit__ = MagicMock(return_value=False)
-        mock_open.return_value = mock_file
+
         mock_vlm.invoke.return_value = MagicMock(content="description")
         analyze_image.invoke({"image_path": "/tmp/photo.jpg"})
         call_args = mock_vlm.invoke.call_args[0][0]
@@ -580,13 +672,10 @@ class TestAnalyzeImage:
 
     @patch("tools.vlm")
     @patch("tools.os.path.exists", return_value=True)
-    @patch("builtins.open", create=True)
-    def test_empty_vlm_response_returns_fallback_message(self, mock_open, _, mock_vlm):
+    @patch("builtins.open", new_callable=mock_open, read_data=b"bytes")
+    def test_empty_vlm_response_returns_fallback_message(self, _mock_open, _, mock_vlm):
         from tools import analyze_image
-        mock_file = MagicMock()
-        mock_file.__enter__ = MagicMock(return_value=MagicMock(read=MagicMock(return_value=b"bytes")))
-        mock_file.__exit__ = MagicMock(return_value=False)
-        mock_open.return_value = mock_file
+
         mock_vlm.invoke.return_value = MagicMock(content="")
         result = analyze_image.invoke({"image_path": "/tmp/photo.jpg"})
         assert "No response" in result
@@ -596,12 +685,14 @@ class TestAnalyzeImage:
 # Flow 9 — analyze_video tool
 # ===========================================================================
 
+
 class TestAnalyzeVideo:
     """analyze_video samples frames via OpenCV and sends them in a single VLM call."""
 
     @patch("tools.os.path.exists", return_value=False)
     def test_missing_file_returns_error(self, _):
         from tools import analyze_video
+
         result = analyze_video.invoke({"video_path": "/nonexistent/video.mp4"})
         assert "Error" in result and "not found" in result
 
@@ -609,6 +700,7 @@ class TestAnalyzeVideo:
     @patch("tools.os.path.exists", return_value=True)
     def test_unopenable_file_returns_error(self, _, mock_cap_class):
         from tools import analyze_video
+
         mock_cap = MagicMock()
         mock_cap.isOpened.return_value = False
         mock_cap_class.return_value = mock_cap
@@ -619,6 +711,7 @@ class TestAnalyzeVideo:
     @patch("tools.os.path.exists", return_value=True)
     def test_no_extractable_frames_returns_error(self, _, mock_cap_class):
         from tools import analyze_video
+
         mock_cap = MagicMock()
         mock_cap.isOpened.return_value = True
         mock_cap.get.return_value = 10
@@ -633,35 +726,45 @@ class TestAnalyzeVideo:
 # Flow 10 — analyze_document tool
 # ===========================================================================
 
+
 class TestAnalyzeDocument:
     """analyze_document parses PDF, DOCX, XLSX, or CSV and answers a question via the LLM."""
 
     @patch("tools.os.path.exists", return_value=False)
     def test_missing_file_returns_error(self, _):
         from tools import analyze_document
+
         result = analyze_document.invoke({"file_path": "/nonexistent/doc.pdf"})
         assert "Error" in result and "not found" in result
 
     @patch("tools.os.path.exists", return_value=True)
     def test_unsupported_extension_returns_error(self, _):
         from tools import analyze_document
+
         result = analyze_document.invoke({"file_path": "/tmp/file.txt"})
         assert "Unsupported file type" in result
 
     @patch("tools.llm")
     @patch("tools.os.path.exists", return_value=True)
     def test_csv_analysis_calls_llm_with_extracted_text(self, _, mock_llm):
-        from tools import analyze_document
         import pandas as pd
+
+        from tools import analyze_document
+
         mock_llm.invoke.return_value = MagicMock(content="3 rows found")
-        csv_data = pd.DataFrame({"name": ["Alice", "Bob", "Carol"], "age": [30, 25, 28]})
+        csv_data = pd.DataFrame(
+            {"name": ["Alice", "Bob", "Carol"], "age": [30, 25, 28]}
+        )
         with patch("pandas.read_csv", return_value=csv_data):
-            result = analyze_document.invoke({"file_path": "/tmp/data.csv", "question": "How many rows?"})
+            result = analyze_document.invoke(
+                {"file_path": "/tmp/data.csv", "question": "How many rows?"}
+            )
         assert result == "3 rows found"
 
     @patch("tools.os.path.exists", return_value=True)
     def test_empty_extracted_text_returns_error(self, _):
         from tools import analyze_document
+
         # Patch pdfplumber to return a pdf with pages that have no extractable text
         mock_pdf = MagicMock()
         mock_pdf.__enter__ = MagicMock(return_value=mock_pdf)
@@ -675,6 +778,7 @@ class TestAnalyzeDocument:
 # ===========================================================================
 # Flow 11 — trim_messages_window
 # ===========================================================================
+
 
 class TestTrimMessagesWindow:
     """trim_messages_window keeps only the most recent messages up to the limit."""
@@ -702,11 +806,13 @@ class TestTrimMessagesWindow:
 # Flow 12 — parse_user_input (main.py utility)
 # ===========================================================================
 
+
 class TestParseUserInput:
     """parse_user_input extracts an attached file or media path from the raw message."""
 
     def setup_method(self):
         from main import parse_user_input
+
         self.parse = parse_user_input
 
     def test_plain_text_returns_unchanged_text_and_none_path(self):

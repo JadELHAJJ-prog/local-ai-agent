@@ -1,5 +1,14 @@
 from langchain_ollama import ChatOllama
-from config import LLM_MODEL, VLM_MODEL, CODER_MODEL, NUM_CTX, TEMPERATURE, NUM_PREDICT, TOP_P
+
+from config import (
+    CODER_MODEL,
+    LLM_MODEL,
+    NUM_CTX,
+    NUM_PREDICT,
+    TEMPERATURE,
+    TOP_P,
+    VLM_MODEL,
+)
 
 llm = ChatOllama(
     model=LLM_MODEL,

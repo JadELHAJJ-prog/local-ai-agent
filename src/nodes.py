@@ -1,13 +1,13 @@
 import uuid
 from datetime import date
 
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langgraph.types import interrupt
 
+from config import APPROVAL_PHRASES, CODE_PATTERNS, DOCUMENT_EXTENSIONS
+from models import coder_llm, llm
 from state import AgentState
-from config import CODE_PATTERNS, APPROVAL_PHRASES, DOCUMENT_EXTENSIONS
-from models import llm, coder_llm
 from tools import tools
 
 # Bind tools to the reasoning LLM once at module load so every agent_node call reuses the same binding
@@ -129,7 +129,13 @@ def code_generation_node(state: AgentState) -> dict:
     if not hasattr(last_message, "tool_calls") or not last_message.tool_calls:
         user_request = last_message.content
         response = coder_llm.invoke(
-            [HumanMessage(content=_build_code_prompt("Write Python code for this task", user_request))]
+            [
+                HumanMessage(
+                    content=_build_code_prompt(
+                        "Write Python code for this task", user_request
+                    )
+                )
+            ]
         )
         code = _strip_markdown(response.content)
 
@@ -151,7 +157,11 @@ def code_generation_node(state: AgentState) -> dict:
     tool_call = last_message.tool_calls[0]
     rough_code = tool_call["args"]["code"]
     response = coder_llm.invoke(
-        [HumanMessage(content=_build_code_prompt("Improve and optimize this code", rough_code))]
+        [
+            HumanMessage(
+                content=_build_code_prompt("Improve and optimize this code", rough_code)
+            )
+        ]
     )
     improved_code = _strip_markdown(response.content)
 
