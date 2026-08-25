@@ -1,9 +1,11 @@
 import uuid
 from datetime import date
+from typing import Literal
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langgraph.types import interrupt
+from pydantic import BaseModel
 
 from config import APPROVAL_PHRASES, CODE_PATTERNS, DOCUMENT_EXTENSIONS
 from models import coder_llm, llm
@@ -54,6 +56,15 @@ def trim_messages_window(messages: list, max_messages: int = 20) -> list:
 
 
 # --- Router ---
+
+
+class RouteDecision(BaseModel):
+    input_type: Literal["code", "general"]
+
+
+router_llm = llm.with_structured_output(RouteDecision)
+
+
 # Classify the input type so the graph can dispatch to the correct specialized node
 def input_router_node(state: AgentState) -> dict:
     last_message = state["messages"][-1]
@@ -69,12 +80,50 @@ def input_router_node(state: AgentState) -> dict:
         # Path present but extension is a media type, not a document format
         return {"input_type": "media"}
 
-    # One or more code-request keywords detected: skip the general agent, go to code generation
-    if any(pattern in content for pattern in CODE_PATTERNS):
-        return {"input_type": "code"}
+    try:
+        decision = router_llm.invoke(
+            [
+                (
+                    "system",
+                    """Classify the user's request as either "code" or "general".
 
-    # Default path for greetings, questions, and anything not classified above
-    return {"input_type": "general"}
+"code" means the user is asking you to write, generate, create, implement, run, or execute \
+a piece of code, script, program, or function. This includes indirect phrasings like \
+"I need/want something that ___", "give me something that ___", or "can you make something \
+that ___" whenever the "___" describes a programming task (e.g. checking a condition, \
+transforming data, processing files) - the request doesn't have to use the word "code" or \
+"script" explicitly to still be a code request.
+"general" means anything else - greetings, questions, requests for information, casual \
+conversation, or simple math done in your head.
+
+Examples of "code":
+- "write a python function to sort a list"
+- "can you implement a binary search"
+- "run this script for me"
+- "spin me up something that reverses a string"
+- "I need something that checks whether a number is prime"
+- "give me something that removes duplicates from a list"
+- "I want something that renames every file in a folder"
+
+Examples of "general":
+- "hi, how are you?"
+- "what is 2+2"
+- "I run every morning, any tips?"
+- "who are you" """,
+                ),
+                ("human", last_message.content),
+            ]
+        )
+
+        return {"input_type": decision.input_type}
+
+    # If the classifier fails, fall back to the old keyword routing
+    # so the graph still works instead of crashing
+    except Exception:
+        if any(pattern in content for pattern in CODE_PATTERNS):
+            return {"input_type": "code"}
+
+        return {"input_type": "general"}
 
 
 def should_route(state: AgentState) -> str:

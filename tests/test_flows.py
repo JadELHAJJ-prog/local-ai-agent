@@ -71,54 +71,256 @@ def make_state(**overrides):
 class TestInputRouterNode:
     """input_router_node classifies the last message and writes input_type to state."""
 
-    def test_greeting_routes_to_general(self):
+    def _mock_decision(self, input_type):
+        decision = MagicMock()
+        decision.input_type = input_type
+        return decision
+
+    # ------------------------------------------------------------------
+    # Basic code/general routing
+    # ------------------------------------------------------------------
+
+    @patch("nodes.router_llm")
+    def test_greeting_routes_to_general(self, mock_router):
+        mock_router.invoke.return_value = self._mock_decision("general")
+
         state = make_state(messages=[HumanMessage(content="Hello, how are you?")])
+
         assert input_router_node(state)["input_type"] == "general"
 
-    def test_math_question_routes_to_general(self):
+    @patch("nodes.router_llm")
+    def test_math_question_routes_to_general(self, mock_router):
+        mock_router.invoke.return_value = self._mock_decision("general")
+
         state = make_state(messages=[HumanMessage(content="what is 2 plus 2?")])
+
         assert input_router_node(state)["input_type"] == "general"
 
-    def test_write_keyword_routes_to_code(self):
+    @patch("nodes.router_llm")
+    def test_write_keyword_routes_to_code(self, mock_router):
+        mock_router.invoke.return_value = self._mock_decision("code")
+
         state = make_state(
             messages=[HumanMessage(content="write a python function to sort a list")]
         )
+
         assert input_router_node(state)["input_type"] == "code"
 
-    def test_generate_keyword_routes_to_code(self):
+    @patch("nodes.router_llm")
+    def test_generate_keyword_routes_to_code(self, mock_router):
+        mock_router.invoke.return_value = self._mock_decision("code")
+
         state = make_state(
             messages=[HumanMessage(content="generate a script to parse JSON")]
         )
+
         assert input_router_node(state)["input_type"] == "code"
 
-    def test_implement_keyword_routes_to_code(self):
+    @patch("nodes.router_llm")
+    def test_implement_keyword_routes_to_code(self, mock_router):
+        mock_router.invoke.return_value = self._mock_decision("code")
+
         state = make_state(messages=[HumanMessage(content="implement a binary search")])
+
         assert input_router_node(state)["input_type"] == "code"
+
+    # ------------------------------------------------------------------
+    # File/media routing
+    # These do NOT need mocks because the LLM is never called.
+    # ------------------------------------------------------------------
 
     def test_image_path_marker_routes_to_media(self):
         msg = "[image provided at path: /tmp/photo.png] what is in this image?"
+
         state = make_state(messages=[HumanMessage(content=msg)])
+
         assert input_router_node(state)["input_type"] == "media"
 
     def test_pdf_file_marker_routes_to_document_pdf(self):
         msg = "summarize this [file provided at path: /tmp/report.pdf]"
+
         state = make_state(messages=[HumanMessage(content=msg)])
+
         assert input_router_node(state)["input_type"] == "document_pdf"
 
     def test_docx_file_marker_routes_to_document_docx(self):
         msg = "read [file provided at path: /tmp/notes.docx]"
+
         state = make_state(messages=[HumanMessage(content=msg)])
+
         assert input_router_node(state)["input_type"] == "document_docx"
 
     def test_xlsx_file_marker_routes_to_document_xlsx(self):
         msg = "analyze [file provided at path: /data/sheet.xlsx]"
+
         state = make_state(messages=[HumanMessage(content=msg)])
+
         assert input_router_node(state)["input_type"] == "document_xlsx"
 
     def test_csv_file_marker_routes_to_document_csv(self):
         msg = "analyze [file provided at path: /data/data.csv]"
+
         state = make_state(messages=[HumanMessage(content=msg)])
+
         assert input_router_node(state)["input_type"] == "document_csv"
+
+    # ------------------------------------------------------------------
+    # Old false positives
+    # Words such as run/implement/debug/function/optimize should not
+    # automatically imply code.
+    # ------------------------------------------------------------------
+
+    @patch("nodes.router_llm")
+    def test_run_every_morning_routes_to_general(self, mock_router):
+        mock_router.invoke.return_value = self._mock_decision("general")
+
+        state = make_state(
+            messages=[HumanMessage(content="I run every morning, any tips?")]
+        )
+
+        assert input_router_node(state)["input_type"] == "general"
+
+    @patch("nodes.router_llm")
+    def test_implement_study_habits_routes_to_general(self, mock_router):
+        mock_router.invoke.return_value = self._mock_decision("general")
+
+        state = make_state(
+            messages=[HumanMessage(content="How can I implement better study habits?")]
+        )
+
+        assert input_router_node(state)["input_type"] == "general"
+
+    @patch("nodes.router_llm")
+    def test_debug_disagreement_routes_to_general(self, mock_router):
+        mock_router.invoke.return_value = self._mock_decision("general")
+
+        state = make_state(
+            messages=[
+                HumanMessage(
+                    content="What's the best way to debug a disagreement with a coworker?"
+                )
+            ]
+        )
+
+        assert input_router_node(state)["input_type"] == "general"
+
+    @patch("nodes.router_llm")
+    def test_function_for_room_routes_to_general(self, mock_router):
+        mock_router.invoke.return_value = self._mock_decision("general")
+
+        state = make_state(
+            messages=[HumanMessage(content="What's a good function for this room?")]
+        )
+
+        assert input_router_node(state)["input_type"] == "general"
+
+    @patch("nodes.router_llm")
+    def test_optimize_daily_routine_routes_to_general(self, mock_router):
+        mock_router.invoke.return_value = self._mock_decision("general")
+
+        state = make_state(
+            messages=[HumanMessage(content="How can I optimize my daily routine?")]
+        )
+
+        assert input_router_node(state)["input_type"] == "general"
+
+    # ------------------------------------------------------------------
+    # Old false negatives
+    # These are code requests even though they don't explicitly say
+    # "write code".
+    # ------------------------------------------------------------------
+
+    @patch("nodes.router_llm")
+    def test_reverse_string_request_routes_to_code(self, mock_router):
+        mock_router.invoke.return_value = self._mock_decision("code")
+
+        state = make_state(
+            messages=[
+                HumanMessage(content="Spin me up something that reverses a string.")
+            ]
+        )
+
+        assert input_router_node(state)["input_type"] == "code"
+
+    @patch("nodes.router_llm")
+    def test_csv_reader_request_routes_to_code(self, mock_router):
+        mock_router.invoke.return_value = self._mock_decision("code")
+
+        state = make_state(
+            messages=[
+                HumanMessage(
+                    content="Make me something that reads a CSV and prints every name."
+                )
+            ]
+        )
+
+        assert input_router_node(state)["input_type"] == "code"
+
+    @patch("nodes.router_llm")
+    def test_prime_checker_request_routes_to_code(self, mock_router):
+        mock_router.invoke.return_value = self._mock_decision("code")
+
+        state = make_state(
+            messages=[
+                HumanMessage(
+                    content="I need something that checks whether a number is prime."
+                )
+            ]
+        )
+
+        assert input_router_node(state)["input_type"] == "code"
+
+    @patch("nodes.router_llm")
+    def test_remove_duplicates_request_routes_to_code(self, mock_router):
+        mock_router.invoke.return_value = self._mock_decision("code")
+
+        state = make_state(
+            messages=[
+                HumanMessage(
+                    content="Give me something that removes duplicates from a list."
+                )
+            ]
+        )
+
+        assert input_router_node(state)["input_type"] == "code"
+
+    @patch("nodes.router_llm")
+    def test_rename_files_request_routes_to_code(self, mock_router):
+        mock_router.invoke.return_value = self._mock_decision("code")
+
+        state = make_state(
+            messages=[
+                HumanMessage(
+                    content="I want something that renames every file in a folder."
+                )
+            ]
+        )
+
+        assert input_router_node(state)["input_type"] == "code"
+
+    # ------------------------------------------------------------------
+    # Fallback behavior
+    # ------------------------------------------------------------------
+
+    @patch("nodes.router_llm")
+    def test_router_llm_failure_falls_back_to_code_patterns(self, mock_router):
+        mock_router.invoke.side_effect = RuntimeError("Ollama unavailable")
+
+        state = make_state(messages=[HumanMessage(content="write code to sort a list")])
+
+        with patch("nodes.CODE_PATTERNS", ["write code"]):
+            assert input_router_node(state)["input_type"] == "code"
+
+    @patch("nodes.router_llm")
+    def test_router_llm_failure_falls_back_to_general(self, mock_router):
+        mock_router.invoke.side_effect = RuntimeError("Ollama unavailable")
+
+        state = make_state(
+            messages=[HumanMessage(content="tell me about the solar system")]
+        )
+
+        with patch("nodes.CODE_PATTERNS", ["write code"]):
+            assert input_router_node(state)["input_type"] == "general"
 
 
 class TestShouldRoute:
