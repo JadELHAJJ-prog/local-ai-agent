@@ -69,7 +69,6 @@ def make_state(**overrides):
 # Flow 1 — input_router_node + should_route
 # ===========================================================================
 
-
 class TestInputRouterNode:
     """input_router_node classifies the last message and writes input_type to state."""
 
