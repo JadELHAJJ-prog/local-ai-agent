@@ -1,0 +1,17 @@
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+# Conservative baseline: pycodestyle errors/warnings, pyflakes, isort.
+# Broader rule sets (SIM, BLE, ...) are left for a deliberate follow-up
+# pass rather than folded silently into the CI setup.
+select = ["E", "F", "I", "W"]
+# E501 (line too long) is noisy alongside black: black enforces line length
+# for code, but never wraps comments/strings, so E501 would otherwise just
+# flag this codebase's existing long descriptive comments.
+ignore = ["E501"]
