@@ -7,9 +7,9 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langgraph.types import interrupt
 from pydantic import BaseModel
 
+from config import APPROVAL_PHRASES, CODE_PATTERNS, DOCUMENT_EXTENSIONS
+from models import coder_llm, llm
 from state import AgentState
-from config import CODE_PATTERNS, APPROVAL_PHRASES, DOCUMENT_EXTENSIONS
-from models import llm, coder_llm
 from tools import tools
 
 # Bind tools to the reasoning LLM once at module load so every agent_node call reuses the same binding
@@ -57,11 +57,13 @@ def trim_messages_window(messages: list, max_messages: int = 20) -> list:
 
 # --- Router ---
 
+
 class RouteDecision(BaseModel):
     input_type: Literal["code", "general"]
 
 
 router_llm = llm.with_structured_output(RouteDecision)
+
 
 # Classify the input type so the graph can dispatch to the correct specialized node
 def input_router_node(state: AgentState) -> dict:
@@ -78,7 +80,6 @@ def input_router_node(state: AgentState) -> dict:
         # Path present but extension is a media type, not a document format
         return {"input_type": "media"}
 
-    
     try:
         decision = router_llm.invoke(
             [
@@ -123,6 +124,7 @@ Examples of "general":
             return {"input_type": "code"}
 
         return {"input_type": "general"}
+
 
 def should_route(state: AgentState) -> str:
     input_type = state.get("input_type", "general")

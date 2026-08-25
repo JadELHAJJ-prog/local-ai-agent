@@ -84,23 +84,17 @@ class TestInputRouterNode:
     def test_greeting_routes_to_general(self, mock_router):
         mock_router.invoke.return_value = self._mock_decision("general")
 
-        state = make_state(
-            messages=[HumanMessage(content="Hello, how are you?")]
-        )
+        state = make_state(messages=[HumanMessage(content="Hello, how are you?")])
 
         assert input_router_node(state)["input_type"] == "general"
-
 
     @patch("nodes.router_llm")
     def test_math_question_routes_to_general(self, mock_router):
         mock_router.invoke.return_value = self._mock_decision("general")
 
-        state = make_state(
-            messages=[HumanMessage(content="what is 2 plus 2?")]
-        )
+        state = make_state(messages=[HumanMessage(content="what is 2 plus 2?")])
 
         assert input_router_node(state)["input_type"] == "general"
-
 
     @patch("nodes.router_llm")
     def test_write_keyword_routes_to_code(self, mock_router):
@@ -112,7 +106,6 @@ class TestInputRouterNode:
 
         assert input_router_node(state)["input_type"] == "code"
 
-
     @patch("nodes.router_llm")
     def test_generate_keyword_routes_to_code(self, mock_router):
         mock_router.invoke.return_value = self._mock_decision("code")
@@ -123,17 +116,13 @@ class TestInputRouterNode:
 
         assert input_router_node(state)["input_type"] == "code"
 
-
     @patch("nodes.router_llm")
     def test_implement_keyword_routes_to_code(self, mock_router):
         mock_router.invoke.return_value = self._mock_decision("code")
 
-        state = make_state(
-            messages=[HumanMessage(content="implement a binary search")]
-        )
+        state = make_state(messages=[HumanMessage(content="implement a binary search")])
 
         assert input_router_node(state)["input_type"] == "code"
-
 
     # ------------------------------------------------------------------
     # File/media routing
@@ -143,52 +132,37 @@ class TestInputRouterNode:
     def test_image_path_marker_routes_to_media(self):
         msg = "[image provided at path: /tmp/photo.png] what is in this image?"
 
-        state = make_state(
-            messages=[HumanMessage(content=msg)]
-        )
+        state = make_state(messages=[HumanMessage(content=msg)])
 
         assert input_router_node(state)["input_type"] == "media"
-
 
     def test_pdf_file_marker_routes_to_document_pdf(self):
         msg = "summarize this [file provided at path: /tmp/report.pdf]"
 
-        state = make_state(
-            messages=[HumanMessage(content=msg)]
-        )
+        state = make_state(messages=[HumanMessage(content=msg)])
 
         assert input_router_node(state)["input_type"] == "document_pdf"
-
 
     def test_docx_file_marker_routes_to_document_docx(self):
         msg = "read [file provided at path: /tmp/notes.docx]"
 
-        state = make_state(
-            messages=[HumanMessage(content=msg)]
-        )
+        state = make_state(messages=[HumanMessage(content=msg)])
 
         assert input_router_node(state)["input_type"] == "document_docx"
-
 
     def test_xlsx_file_marker_routes_to_document_xlsx(self):
         msg = "analyze [file provided at path: /data/sheet.xlsx]"
 
-        state = make_state(
-            messages=[HumanMessage(content=msg)]
-        )
+        state = make_state(messages=[HumanMessage(content=msg)])
 
         assert input_router_node(state)["input_type"] == "document_xlsx"
-
 
     def test_csv_file_marker_routes_to_document_csv(self):
         msg = "analyze [file provided at path: /data/data.csv]"
 
-        state = make_state(
-            messages=[HumanMessage(content=msg)]
-        )
+        state = make_state(messages=[HumanMessage(content=msg)])
 
         assert input_router_node(state)["input_type"] == "document_csv"
-
 
     # ------------------------------------------------------------------
     # Old false positives
@@ -206,7 +180,6 @@ class TestInputRouterNode:
 
         assert input_router_node(state)["input_type"] == "general"
 
-
     @patch("nodes.router_llm")
     def test_implement_study_habits_routes_to_general(self, mock_router):
         mock_router.invoke.return_value = self._mock_decision("general")
@@ -216,7 +189,6 @@ class TestInputRouterNode:
         )
 
         assert input_router_node(state)["input_type"] == "general"
-
 
     @patch("nodes.router_llm")
     def test_debug_disagreement_routes_to_general(self, mock_router):
@@ -232,7 +204,6 @@ class TestInputRouterNode:
 
         assert input_router_node(state)["input_type"] == "general"
 
-
     @patch("nodes.router_llm")
     def test_function_for_room_routes_to_general(self, mock_router):
         mock_router.invoke.return_value = self._mock_decision("general")
@@ -243,7 +214,6 @@ class TestInputRouterNode:
 
         assert input_router_node(state)["input_type"] == "general"
 
-
     @patch("nodes.router_llm")
     def test_optimize_daily_routine_routes_to_general(self, mock_router):
         mock_router.invoke.return_value = self._mock_decision("general")
@@ -253,7 +223,6 @@ class TestInputRouterNode:
         )
 
         assert input_router_node(state)["input_type"] == "general"
-
 
     # ------------------------------------------------------------------
     # Old false negatives
@@ -267,14 +236,11 @@ class TestInputRouterNode:
 
         state = make_state(
             messages=[
-                HumanMessage(
-                    content="Spin me up something that reverses a string."
-                )
+                HumanMessage(content="Spin me up something that reverses a string.")
             ]
         )
 
         assert input_router_node(state)["input_type"] == "code"
-
 
     @patch("nodes.router_llm")
     def test_csv_reader_request_routes_to_code(self, mock_router):
@@ -290,7 +256,6 @@ class TestInputRouterNode:
 
         assert input_router_node(state)["input_type"] == "code"
 
-
     @patch("nodes.router_llm")
     def test_prime_checker_request_routes_to_code(self, mock_router):
         mock_router.invoke.return_value = self._mock_decision("code")
@@ -304,7 +269,6 @@ class TestInputRouterNode:
         )
 
         assert input_router_node(state)["input_type"] == "code"
-
 
     @patch("nodes.router_llm")
     def test_remove_duplicates_request_routes_to_code(self, mock_router):
@@ -320,7 +284,6 @@ class TestInputRouterNode:
 
         assert input_router_node(state)["input_type"] == "code"
 
-
     @patch("nodes.router_llm")
     def test_rename_files_request_routes_to_code(self, mock_router):
         mock_router.invoke.return_value = self._mock_decision("code")
@@ -335,7 +298,6 @@ class TestInputRouterNode:
 
         assert input_router_node(state)["input_type"] == "code"
 
-
     # ------------------------------------------------------------------
     # Fallback behavior
     # ------------------------------------------------------------------
@@ -344,13 +306,10 @@ class TestInputRouterNode:
     def test_router_llm_failure_falls_back_to_code_patterns(self, mock_router):
         mock_router.invoke.side_effect = RuntimeError("Ollama unavailable")
 
-        state = make_state(
-            messages=[HumanMessage(content="write code to sort a list")]
-        )
+        state = make_state(messages=[HumanMessage(content="write code to sort a list")])
 
         with patch("nodes.CODE_PATTERNS", ["write code"]):
             assert input_router_node(state)["input_type"] == "code"
-
 
     @patch("nodes.router_llm")
     def test_router_llm_failure_falls_back_to_general(self, mock_router):
@@ -362,7 +321,8 @@ class TestInputRouterNode:
 
         with patch("nodes.CODE_PATTERNS", ["write code"]):
             assert input_router_node(state)["input_type"] == "general"
-            
+
+
 class TestShouldRoute:
     """should_route reads input_type and returns the correct node name."""
 
@@ -989,8 +949,10 @@ class TestAnalyzeDocument:
     @patch("tools.llm")
     @patch("tools.os.path.exists", return_value=True)
     def test_csv_analysis_calls_llm_with_extracted_text(self, _, mock_llm):
-        from tools import analyze_document
         import pandas as pd
+
+        from tools import analyze_document
+
         mock_llm.invoke.return_value = MagicMock(content="3 rows found")
         csv_data = pd.DataFrame(
             {"name": ["Alice", "Bob", "Carol"], "age": [30, 25, 28]}
