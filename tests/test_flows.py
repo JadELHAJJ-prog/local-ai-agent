@@ -37,6 +37,7 @@ from nodes import (
     human_approval_node,
     input_router_node,
     output_parser_node,
+    research_subagent_node,
     should_execute_tool,
     should_retry,
     should_route,
@@ -223,6 +224,21 @@ class TestShouldUseTool:
             ],
         )
         assert should_use_tool(make_state(messages=[msg])) == "tool_node"
+
+    def test_research_web_call_goes_to_research_subagent(self):
+        msg = AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "research_web",
+                    "args": {"question": "Compare the latest AI agent frameworks"},
+                    "id": "c6",
+                    "type": "tool_call",
+                }
+            ],
+        )
+
+        assert should_use_tool(make_state(messages=[msg])) == "research_subagent_node"
 
 
 # ===========================================================================
@@ -845,3 +861,105 @@ class TestParseUserInput:
         text, path = self.parse("read the file /tmp/notes.txt")
         assert path is None
         assert text == "read the file /tmp/notes.txt"
+
+
+# ===========================================================================
+# Flow 13 — research_subagent_node
+# ===========================================================================
+
+
+class TestResearchSubagentNode:
+    """research_subagent_node performs bounded multi-step web research."""
+
+    @patch("nodes.research_llm")
+    @patch("nodes.search_web")
+    def test_single_search_sufficient_stops_after_one_search(
+        self, mock_search, mock_research_llm
+    ):
+        mock_search.invoke.return_value = (
+            "Title: Python\n"
+            "URL: https://example.com\n"
+            "Summary: Python was created by Guido van Rossum."
+        )
+
+        decision = MagicMock()
+        decision.sufficient = True
+        decision.answer = "Python was created by Guido van Rossum."
+        decision.next_query = ""
+
+        mock_research_llm.invoke.return_value = decision
+
+        state = make_state(messages=[HumanMessage(content="Who created Python?")])
+
+        result = research_subagent_node(state)
+
+        assert result["messages"][0].content == (
+            "Python was created by Guido van Rossum."
+        )
+        assert mock_search.invoke.call_count == 1
+
+    @patch("nodes.research_llm")
+    @patch("nodes.search_web")
+    def test_multiple_searches_when_first_result_is_insufficient(
+        self, mock_search, mock_research_llm
+    ):
+        mock_search.invoke.side_effect = [
+            "Title: Result 1\n"
+            "URL: https://example.com/1\n"
+            "Summary: Not enough information.",
+            "Title: Result 2\n"
+            "URL: https://example.com/2\n"
+            "Summary: The answer is 42.",
+        ]
+
+        first_decision = MagicMock()
+        first_decision.sufficient = False
+        first_decision.answer = ""
+        first_decision.next_query = "more specific research query"
+
+        second_decision = MagicMock()
+        second_decision.sufficient = True
+        second_decision.answer = "The answer is 42."
+        second_decision.next_query = ""
+
+        mock_research_llm.invoke.side_effect = [
+            first_decision,
+            second_decision,
+        ]
+
+        state = make_state(messages=[HumanMessage(content="What is the answer?")])
+
+        result = research_subagent_node(state)
+
+        assert result["messages"][0].content == "The answer is 42."
+        assert mock_search.invoke.call_count == 2
+        assert mock_search.invoke.call_args_list[1].args[0] == {
+            "query": "more specific research query"
+        }
+
+    @patch("nodes.research_llm")
+    @patch("nodes.search_web")
+    def test_iteration_budget_exhausted_stops_after_three_searches(
+        self, mock_search, mock_research_llm
+    ):
+        mock_search.invoke.return_value = (
+            "Title: Result\n"
+            "URL: https://example.com\n"
+            "Summary: Still not enough information."
+        )
+
+        decision = MagicMock()
+        decision.sufficient = False
+        decision.answer = ""
+        decision.next_query = "try another query"
+
+        mock_research_llm.invoke.return_value = decision
+
+        state = make_state(
+            messages=[HumanMessage(content="Research something difficult")]
+        )
+
+        result = research_subagent_node(state)
+
+        assert mock_search.invoke.call_count == 3
+        assert "research search limit" in result["messages"][0].content.lower()

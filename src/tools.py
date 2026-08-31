@@ -33,6 +33,14 @@ def search_web(query: str) -> str:
 
 
 @tool
+def research_web(question: str) -> str:
+    """Delegate a complex web research question to the research subagent.
+    Use this when answering likely requires multiple searches, query refinement,
+    comparing sources, or deeper investigation beyond a single web search."""
+    return question
+
+
+@tool
 def execute_code(code: str) -> str:
     """Execute Python code safely in an isolated Docker container.
     Use this when the user asks to run code, perform calculations,
@@ -268,4 +276,11 @@ Please answer the question based on the document content.""")])
     return response.content or "No response generated."
 
 
-tools = [search_web, execute_code, analyze_image, analyze_video, analyze_document]
+tools = [
+    search_web,
+    research_web,
+    execute_code,
+    analyze_image,
+    analyze_video,
+    analyze_document,
+]
