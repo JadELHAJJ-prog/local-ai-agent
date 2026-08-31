@@ -37,12 +37,12 @@ from nodes import (
     human_approval_node,
     input_router_node,
     output_parser_node,
+    research_subagent_node,
     should_execute_tool,
     should_retry,
     should_route,
     should_use_tool,
     trim_messages_window,
-    research_subagent_node,
 )
 
 # ---------------------------------------------------------------------------
@@ -238,10 +238,7 @@ class TestShouldUseTool:
             ],
         )
 
-        assert (
-            should_use_tool(make_state(messages=[msg]))
-            == "research_subagent_node"
-        )
+        assert should_use_tool(make_state(messages=[msg])) == "research_subagent_node"
 
 
 # ===========================================================================
@@ -864,6 +861,8 @@ class TestParseUserInput:
         text, path = self.parse("read the file /tmp/notes.txt")
         assert path is None
         assert text == "read the file /tmp/notes.txt"
+
+
 # ===========================================================================
 # Flow 13 — research_subagent_node
 # ===========================================================================
@@ -890,9 +889,7 @@ class TestResearchSubagentNode:
 
         mock_research_llm.invoke.return_value = decision
 
-        state = make_state(
-            messages=[HumanMessage(content="Who created Python?")]
-        )
+        state = make_state(messages=[HumanMessage(content="Who created Python?")])
 
         result = research_subagent_node(state)
 
@@ -930,9 +927,7 @@ class TestResearchSubagentNode:
             second_decision,
         ]
 
-        state = make_state(
-            messages=[HumanMessage(content="What is the answer?")]
-        )
+        state = make_state(messages=[HumanMessage(content="What is the answer?")])
 
         result = research_subagent_node(state)
 
