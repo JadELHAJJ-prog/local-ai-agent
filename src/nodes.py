@@ -4,11 +4,12 @@ from datetime import date
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langgraph.types import interrupt
+from pydantic import BaseModel
 
 from config import APPROVAL_PHRASES, CODE_PATTERNS, DOCUMENT_EXTENSIONS
 from models import coder_llm, llm
 from state import AgentState
-from tools import tools
+from tools import search_web, tools
 
 # Bind tools to the reasoning LLM once at module load so every agent_node call reuses the same binding
 llm_with_tools = llm.bind_tools(tools)
@@ -22,13 +23,15 @@ prompt = ChatPromptTemplate.from_messages(
             """You are Bubbles, a helpful AI assistant. Today is {date}.
 
 TOOLS - only use when explicitly needed:
-- search_web: ONLY if user asks for news, current events, or real-time data. NEVER for greetings, math, coding, or general questions.
+
+- search_web: Use for a simple web lookup where one search is likely enough, especially news, current events, or real-time data.
+- research_web: Use for complex web research that may require multiple searches, refined queries, comparing information, or deeper investigation.
 - execute_code: ONLY if user says "run", "execute", or "test this code".
 - analyze_image: use when user provides an image path ending in .jpg .jpeg .png .gif .webp. Extract the path and analyze it.
 - analyze_video: use when user provides a video path ending in .mp4 .avi .mov .mkv. Extract the path and analyze it.
 - analyze_document: use when user provides a file path ending in .pdf .docx .xlsx .xls .csv. Extract the path and analyze it.
 
-RULE: If the user says hi, hello, how are you, or asks a general question - respond directly. DO NOT use any tool.
+RULE: If the user says hi, hello, how are you, or asks a simple general-knowledge question that does not require current web information or research, respond directly. DO NOT use any tool.
 
 - If a tool call is rejected with feedback, you MUST call the tool again with the corrected approach. Never answer directly after a rejection.
 Examples of NO tool needed:
@@ -38,6 +41,8 @@ Examples of NO tool needed:
 
 Examples of tool needed:
 - "what is the latest news about AI" -> use search_web
+- "research the latest developments in AI agents and compare the main approaches" -> use research_web
+- "investigate why Python introduced free-threading and summarize the main reasons" -> use research_web
 - "run this python script" -> use execute_code""",
         ),
         MessagesPlaceholder(variable_name="messages"),
@@ -51,6 +56,106 @@ def trim_messages_window(messages: list, max_messages: int = 20) -> list:
     if len(messages) > max_messages:
         return messages[-max_messages:]
     return messages
+
+
+# --- Research subagent ---
+
+
+class ResearchDecision(BaseModel):
+    sufficient: bool
+    answer: str
+    next_query: str
+
+
+research_llm = llm.with_structured_output(ResearchDecision)
+
+MAX_RESEARCH_ITERATIONS = 3
+
+
+def research_subagent_node(state: AgentState) -> dict:
+    # The research question normally comes from a research_web tool call.
+    # Also support a direct message so the node can be tested in isolation.
+    last_message = state["messages"][-1]
+
+    if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+        tool_call = last_message.tool_calls[0]
+        question = tool_call["args"]["question"]
+    else:
+        question = last_message.content
+
+    query = question
+    gathered_information = []
+
+    for _ in range(MAX_RESEARCH_ITERATIONS):
+        # Search using the current query
+        search_results = search_web.invoke({"query": query})
+        gathered_information.append(search_results)
+
+        # Ask the LLM whether the gathered information is sufficient
+        decision = research_llm.invoke(
+            [
+                (
+                    "system",
+                    """You are a research evaluator.
+
+Given the user's original question and the web search results gathered so far,
+decide whether there is enough information to answer confidently.
+
+If the information is sufficient:
+- set sufficient to true
+- provide the final answer in answer
+- set next_query to an empty string
+
+If the information is not sufficient:
+- set sufficient to false
+- set answer to an empty string
+- provide a better, more specific search query in next_query""",
+                ),
+                (
+                    "human",
+                    f"""Original question:
+{question}
+
+Research gathered so far:
+{chr(10).join(gathered_information)}""",
+                ),
+            ]
+        )
+
+        if decision.sufficient:
+            if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+                return {
+                    "messages": [
+                        AIMessage(
+                            id=last_message.id,
+                            content=decision.answer,
+                        )
+                    ]
+                }
+
+            return {"messages": [AIMessage(content=decision.answer)]}
+
+        # Search again using the refined query
+        if decision.next_query:
+            query = decision.next_query
+
+    # Only reaches here after all 3 research attempts are exhausted
+    fallback = (
+        "I could not find enough reliable information "
+        "within the research search limit."
+    )
+
+    if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+        return {
+            "messages": [
+                AIMessage(
+                    id=last_message.id,
+                    content=fallback,
+                )
+            ]
+        }
+
+    return {"messages": [AIMessage(content=fallback)]}
 
 
 # --- Router ---
@@ -107,6 +212,9 @@ def should_use_tool(state: AgentState) -> str:
         # execute_code always goes through the coder model for improvement before human review
         if tool_name == "execute_code":
             return "code_generation_node"
+        # research_web hands off to the dedicated research loop
+        if tool_name == "research_web":
+            return "research_subagent_node"
         # All other tools run directly through ToolNode without an approval step
         return "tool_node"
     # No tool call produced: send the response text to the output validator
