@@ -157,17 +157,24 @@ def _strip_markdown(text: str) -> str:
     return text
 
 
-def _debug_code_in_sandbox(original_request: str, code: str) -> str:
+def _debug_code_in_sandbox(original_request: str, code: str) -> tuple[bool, str]:
+    """Run code in the sandbox, asking the coder model to repair it on failure.
+
+    Returns (verified, code): verified is True only when a sandbox run
+    actually succeeded (exit code 0), never inferred from string content -
+    a program that legitimately prints text starting with "Error:" on a
+    clean exit must not be misread as a sandbox failure.
+    """
     for attempt in range(MAX_CODE_ATTEMPTS):
-        result = run_code_in_sandbox(code)
+        success, result = run_code_in_sandbox(code)
 
-        # No error: code worked, so stop retrying
-        if not result.startswith("Error:"):
-            return code
+        # Sandbox run succeeded: stop retrying
+        if success:
+            return True, code
 
-        # This was the final allowed attempt
+        # This was the final allowed attempt - out of retries, still failing
         if attempt == MAX_CODE_ATTEMPTS - 1:
-            return code
+            return False, code
 
         # Ask the coder to repair the failed code
         repair_prompt = _build_code_repair_prompt(
@@ -180,7 +187,20 @@ def _debug_code_in_sandbox(original_request: str, code: str) -> str:
 
         code = _strip_markdown(response.content)
 
-    return code
+    return False, code
+
+
+def _mark_if_unverified(verified: bool, code: str) -> str:
+    # Surface a failed self-debug loop directly in the code shown to the
+    # human reviewer, rather than letting unverified code reach approval
+    # looking identical to code that actually passed the sandbox check.
+    if verified:
+        return code
+    return (
+        "# WARNING: automated sandbox verification did not succeed after "
+        f"{MAX_CODE_ATTEMPTS} attempts - review this code carefully, it may "
+        "still be broken.\n" + code
+    )
 
 
 def code_generation_node(state: AgentState) -> dict:
@@ -199,10 +219,11 @@ def code_generation_node(state: AgentState) -> dict:
             ]
         )
         code = _strip_markdown(response.content)
-        code = _debug_code_in_sandbox(
+        verified, code = _debug_code_in_sandbox(
             original_request=user_request,
             code=code,
         )
+        code = _mark_if_unverified(verified, code)
         # Wrap the generated code in an AIMessage that looks like a tool call so ToolNode can run it
         new_message = AIMessage(
             content="",
@@ -221,12 +242,16 @@ def code_generation_node(state: AgentState) -> dict:
 
     rough_code = tool_call["args"]["code"]
 
-    # Find the user request that led to this execute_code call
+    # Find the user request that led to this execute_code call. Skip
+    # human_approval_node's synthetic rejection-feedback message - it's the
+    # most recent HumanMessage after a reject-and-rewrite cycle, but it's not
+    # the actual task (see PR #36 review).
     user_request = next(
         (
             message.content
             for message in reversed(state["messages"])
             if isinstance(message, HumanMessage)
+            and not message.additional_kwargs.get("is_rejection_feedback")
         ),
         rough_code,
     )
@@ -240,11 +265,12 @@ def code_generation_node(state: AgentState) -> dict:
     )
     improved_code = _strip_markdown(response.content)
 
-    # NEW: test/fix the improved code before human approval
-    improved_code = _debug_code_in_sandbox(
+    # Test/fix the improved code before human approval
+    verified, improved_code = _debug_code_in_sandbox(
         original_request=user_request,
         code=improved_code,
     )
+    improved_code = _mark_if_unverified(verified, improved_code)
 
     # Preserve the original message id and tool call id so LangGraph message deduplication works correctly
     updated_message = AIMessage(
@@ -299,7 +325,11 @@ def human_approval_node(state: AgentState) -> dict:
             "messages": [
                 HumanMessage(
                     content=f"The code was rejected. User feedback: '{human_response}'. "
-                    f"Please rewrite the code addressing this feedback, then call execute_code again."
+                    f"Please rewrite the code addressing this feedback, then call execute_code again.",
+                    # Marks this as a synthetic message so code_generation_node's
+                    # "find the original user request" lookup can skip it rather
+                    # than mistaking it for the actual task.
+                    additional_kwargs={"is_rejection_feedback": True},
                 )
             ],
         }

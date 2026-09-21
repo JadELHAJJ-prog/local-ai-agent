@@ -32,8 +32,15 @@ def search_web(query: str) -> str:
         )
 
 
-def run_code_in_sandbox(code: str) -> str:
-    """Run Python code inside the isolated Docker sandbox."""
+def run_code_in_sandbox(code: str) -> tuple[bool, str]:
+    """Run Python code inside the isolated Docker sandbox.
+
+    Returns (success, output) rather than overloading a single string with
+    an "Error:"-prefix convention: the program's own legitimate stdout can
+    itself start with the literal text "Error:" (e.g. `print("Error: bad
+    input")` on a clean exit), which a prefix check would misclassify as a
+    sandbox failure.
+    """
     tmp_path = None
 
     try:
@@ -67,15 +74,15 @@ def run_code_in_sandbox(code: str) -> str:
 
         # Check whether the code ran successfully
         if result.returncode == 0:
-            return result.stdout or "Code executed successfully with no output."
+            return True, (result.stdout or "Code executed successfully with no output.")
 
-        return f"Error:\n{result.stderr}"
+        return False, f"Error:\n{result.stderr}"
 
     except subprocess.TimeoutExpired:
-        return "Error: Code execution timed out after 30 seconds."
+        return False, "Error: Code execution timed out after 30 seconds."
 
     except Exception as e:
-        return f"Error: {e}"
+        return False, f"Error: {e}"
 
     finally:
         if tmp_path and os.path.exists(tmp_path):
@@ -88,7 +95,8 @@ def execute_code(code: str) -> str:
     Use this when the user asks to run code, perform calculations,
     or test a Python script. Input should be valid Python code.
     """
-    return run_code_in_sandbox(code)
+    _, output = run_code_in_sandbox(code)
+    return output
 
 
 @tool
