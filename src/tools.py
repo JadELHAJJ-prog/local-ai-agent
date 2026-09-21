@@ -37,7 +37,16 @@ def research_web(question: str) -> str:
     """Delegate a complex web research question to the research subagent.
     Use this when answering likely requires multiple searches, query refinement,
     comparing sources, or deeper investigation beyond a single web search."""
-    return question
+    # This body should never actually run: should_use_tool routes any turn
+    # containing a research_web call to research_subagent_node instead of
+    # ToolNode. If it does run (e.g. a future change to should_use_tool's
+    # routing), fail loudly rather than silently returning the raw question
+    # text disguised as a finished research answer.
+    raise RuntimeError(
+        "research_web was executed directly instead of being routed to "
+        "research_subagent_node - this indicates a routing bug, not a "
+        "valid research result."
+    )
 
 
 @tool

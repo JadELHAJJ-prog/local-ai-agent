@@ -240,6 +240,31 @@ class TestShouldUseTool:
 
         assert should_use_tool(make_state(messages=[msg])) == "research_subagent_node"
 
+    def test_research_web_second_call_still_routes_to_research_subagent(self):
+        # Regression test (PR #38 review): should_use_tool previously only
+        # inspected tool_calls[0], so a research_web call appearing after
+        # another tool call in the same turn would be misrouted to
+        # tool_node instead of research_subagent_node.
+        msg = AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "search_web",
+                    "args": {"query": "AI"},
+                    "id": "c7",
+                    "type": "tool_call",
+                },
+                {
+                    "name": "research_web",
+                    "args": {"question": "Compare AI agent frameworks"},
+                    "id": "c8",
+                    "type": "tool_call",
+                },
+            ],
+        )
+
+        assert should_use_tool(make_state(messages=[msg])) == "research_subagent_node"
+
 
 # ===========================================================================
 # Flow 3 — code_generation_node + helpers
@@ -496,6 +521,24 @@ class TestShouldRetry:
 # ===========================================================================
 # Flow 6 — search_web tool
 # ===========================================================================
+
+
+class TestResearchWebTool:
+    """research_web's body must never actually run - it exists only so the
+    model has something to call; should_use_tool always routes it to
+    research_subagent_node instead of ToolNode."""
+
+    def test_direct_invocation_raises_instead_of_echoing_the_question(self):
+        # Regression test (PR #38 review): the dummy body used to just
+        # `return question`, so if it were ever routed through ToolNode by
+        # mistake, the raw question text would silently pass for a finished
+        # research answer. It must fail loudly instead.
+        import pytest
+
+        from tools import research_web
+
+        with pytest.raises(Exception):
+            research_web.invoke({"question": "anything"})
 
 
 class TestSearchWeb:
@@ -963,3 +1006,48 @@ class TestResearchSubagentNode:
 
         assert mock_search.invoke.call_count == 3
         assert "research search limit" in result["messages"][0].content.lower()
+
+    @patch("nodes.research_llm")
+    @patch("nodes.search_web")
+    def test_empty_next_query_stops_early_instead_of_repeating_search(
+        self, mock_search, mock_research_llm
+    ):
+        # Regression test (PR #38 review): if the evaluator says results are
+        # insufficient but returns no next_query, continuing would just
+        # repeat the identical search for the rest of the budget - the loop
+        # must stop instead of silently burning all 3 attempts on repeats.
+        mock_search.invoke.return_value = (
+            "Title: Result\nURL: https://example.com\nSummary: unclear."
+        )
+
+        decision = MagicMock()
+        decision.sufficient = False
+        decision.answer = ""
+        decision.next_query = ""
+
+        mock_research_llm.invoke.return_value = decision
+
+        state = make_state(messages=[HumanMessage(content="Research something")])
+
+        result = research_subagent_node(state)
+
+        assert mock_search.invoke.call_count == 1
+        assert "research search limit" in result["messages"][0].content.lower()
+
+    @patch("nodes.research_llm")
+    @patch("nodes.search_web")
+    def test_search_error_returns_graceful_message_instead_of_crashing(
+        self, mock_search, mock_research_llm
+    ):
+        # Regression test (PR #38 review): search_web.invoke() is called
+        # directly here, bypassing ToolNode's error handling, so a DDGS
+        # failure (rate-limit, timeout, network error) must be caught here.
+        mock_search.invoke.side_effect = RuntimeError("DDGS rate limit exceeded")
+
+        state = make_state(messages=[HumanMessage(content="Research something")])
+
+        result = research_subagent_node(state)
+
+        assert "research" in result["messages"][0].content.lower()
+        assert "rate limit exceeded" in result["messages"][0].content
+        mock_research_llm.invoke.assert_not_called()

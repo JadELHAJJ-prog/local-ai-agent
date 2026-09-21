@@ -72,6 +72,15 @@ research_llm = llm.with_structured_output(ResearchDecision)
 MAX_RESEARCH_ITERATIONS = 3
 
 
+def _build_research_reply(last_message, content: str) -> dict:
+    # Preserve the original AIMessage's id only when this reply is replacing
+    # a research_web tool call - shared by every research_subagent_node exit
+    # path so a future change to id-preserving logic only needs one place.
+    if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+        return {"messages": [AIMessage(id=last_message.id, content=content)]}
+    return {"messages": [AIMessage(content=content)]}
+
+
 def research_subagent_node(state: AgentState) -> dict:
     # The research question normally comes from a research_web tool call.
     # Also support a direct message so the node can be tested in isolation.
@@ -87,8 +96,15 @@ def research_subagent_node(state: AgentState) -> dict:
     gathered_information = []
 
     for _ in range(MAX_RESEARCH_ITERATIONS):
-        # Search using the current query
-        search_results = search_web.invoke({"query": query})
+        # Search using the current query. Called directly rather than through
+        # ToolNode, so DDGS errors (rate-limit, timeout, network) must be
+        # handled here explicitly instead of relying on ToolNode's handling.
+        try:
+            search_results = search_web.invoke({"query": query})
+        except Exception as e:
+            return _build_research_reply(
+                last_message, f"Research failed while searching the web: {e}"
+            )
         gathered_information.append(search_results)
 
         # Ask the LLM whether the gathered information is sufficient
@@ -123,39 +139,23 @@ Research gathered so far:
         )
 
         if decision.sufficient:
-            if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-                return {
-                    "messages": [
-                        AIMessage(
-                            id=last_message.id,
-                            content=decision.answer,
-                        )
-                    ]
-                }
+            return _build_research_reply(last_message, decision.answer)
 
-            return {"messages": [AIMessage(content=decision.answer)]}
+        # Search again using the refined query. If the evaluator judged the
+        # results insufficient but didn't provide a next_query, any further
+        # iteration would just repeat the identical search - stop now rather
+        # than burning the rest of the budget on guaranteed-repeat results.
+        if not decision.next_query:
+            break
+        query = decision.next_query
 
-        # Search again using the refined query
-        if decision.next_query:
-            query = decision.next_query
-
-    # Only reaches here after all 3 research attempts are exhausted
+    # Reaches here after all research attempts are exhausted, or an
+    # evaluator response with no next_query cut the loop short
     fallback = (
         "I could not find enough reliable information "
         "within the research search limit."
     )
-
-    if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-        return {
-            "messages": [
-                AIMessage(
-                    id=last_message.id,
-                    content=fallback,
-                )
-            ]
-        }
-
-    return {"messages": [AIMessage(content=fallback)]}
+    return _build_research_reply(last_message, fallback)
 
 
 # --- Router ---
@@ -206,14 +206,18 @@ def agent_node(state: AgentState) -> dict:
 
 def should_use_tool(state: AgentState) -> str:
     last_message = state["messages"][-1]
-    # Agent produced a tool call: route based on which tool was requested
+    # Agent produced a tool call: route based on which tool was requested.
+    # Checks every tool call the model emitted this turn, not just the
+    # first, so execute_code/research_web are still routed correctly
+    # regardless of which position they appear in when the model emits more
+    # than one tool call in the same turn.
     if last_message.tool_calls:
-        tool_name = last_message.tool_calls[0]["name"]
+        tool_names = {tc["name"] for tc in last_message.tool_calls}
         # execute_code always goes through the coder model for improvement before human review
-        if tool_name == "execute_code":
+        if "execute_code" in tool_names:
             return "code_generation_node"
         # research_web hands off to the dedicated research loop
-        if tool_name == "research_web":
+        if "research_web" in tool_names:
             return "research_subagent_node"
         # All other tools run directly through ToolNode without an approval step
         return "tool_node"
