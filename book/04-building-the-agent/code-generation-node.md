@@ -7,7 +7,11 @@
 
 ## What it is
 
-The code generation node is a specialized step that routes code requests through `qwen2.5-coder:7b` before passing the code to the human approval gate. It separates the "what code should I write?" reasoning (done by the general LLM or the user) from "write me clean, correct Python" (done by the specialized coder LLM).
+The code generation node is a specialized step that routes code requests through `qwen2.5-coder:7b`. Before the generated code reaches the human approval gate, it is tested inside the Docker sandbox.
+
+If the code fails to run, the actual execution error is sent back to the coder LLM together with the original request and the failed code. The coder then attempts to fix the code and test it again, up to a maximum of three attempts.
+
+Only after the code runs successfully, or the retry limit is reached, is it passed to the human approval node.
 
 ## Why a separate node
 
@@ -17,7 +21,7 @@ Three reasons:
 
 2. **Separation of concerns.** The general LLM reasons about what the user wants. The coder LLM writes the actual code. Each model does what it's best at.
 
-3. **Code quality before review.** When the user sees code for approval, it should be the best version possible - not rough code from a generalist model.
+3. **Code quality before review.** Before the user sees the code for approval, the coder LLM can test it in the Docker sandbox and automatically repair runtime errors. This reduces the chance that the human is asked to approve code that does not even run.
 
 ## Two paths into the node
 
@@ -40,6 +44,11 @@ Write Python code for this task. Return ONLY raw Python code, no markdown, no ex
         response = coder_llm.invoke([HumanMessage(content=code_prompt)])
         code = _strip_markdown(response.content)
 
+        code = _debug_code_in_sandbox(
+            original_request=user_request,
+            code=code,
+        )
+
         new_message = AIMessage(
             content="",
             tool_calls=[{
@@ -49,10 +58,11 @@ Write Python code for this task. Return ONLY raw Python code, no markdown, no ex
                 "type": "tool_call",
             }]
         )
-        return {"messages": [new_message], "code_generated": True}
+        return {"messages": [new_message]}
 ```
+The coder LLM first generates the code and `_strip_markdown` removes any accidental Markdown fences. The code is then passed to `_debug_code_in_sandbox`, which tests it and attempts to repair runtime errors before continuing.
 
-The coder LLM generates the code. A fake AIMessage is created with an `execute_code` tool_call. This is needed because ToolNode needs to see an AIMessage with tool_calls to know what to execute.
+Once the self-debug loop succeeds or reaches its retry limit, an `AIMessage` containing an `execute_code` tool call is created. This allows the graph to continue to the human approval stage.
 
 **Path 2: from agent_node** - user asked to run code, and the general LLM wrote rough code in its tool_call
 
@@ -60,12 +70,25 @@ The coder LLM generates the code. A fake AIMessage is created with an `execute_c
     # Path 2: coming from agent_node - improve existing code in the tool_call
     tool_call = last_message.tool_calls[0]
     rough_code = tool_call["args"]["code"]
+    user_request = next(
+        (
+            message.content
+            for message in reversed(state["messages"])
+            if isinstance(message, HumanMessage)
+        ),
+        rough_code,
+    )
     code_prompt = f"""You are an expert Python developer.
 Improve and optimize this code. Return ONLY raw Python code, no markdown, no explanation:
 
 {rough_code}"""
     response = coder_llm.invoke([HumanMessage(content=code_prompt)])
     improved_code = _strip_markdown(response.content)
+
+    improved_code = _debug_code_in_sandbox(
+        original_request=user_request,
+        code=improved_code,
+    )
 
     updated_message = AIMessage(
         id=last_message.id,
@@ -77,10 +100,72 @@ Improve and optimize this code. Return ONLY raw Python code, no markdown, no exp
             "type": "tool_call",
         }]
     )
-    return {"messages": [updated_message], "code_generated": True}
+    return {"messages": [updated_message]}
 ```
 
-The general LLM already produced rough code. The coder LLM improves it. The AIMessage is updated with the improved code but keeps the original message ID - this is important for LangGraph's message deduplication.
+The general LLM has already proposed rough code, so the coder LLM first improves it. The improved version is then tested by the same self-debug loop before being passed to human approval.
+
+The existing tool-call ID and message ID are preserved so LangGraph updates the existing message instead of creating a duplicate.
+
+## Self-debug loop
+
+Before generated code is shown to the human for approval, it is tested inside the Docker sandbox.
+
+The loop is limited to three execution attempts:
+
+```python
+MAX_CODE_ATTEMPTS = 3
+```
+
+The `_debug_code_in_sandbox` helper runs the generated code using `run_code_in_sandbox`. If the code executes successfully, the loop stops immediately.
+
+If execution fails, the actual sandbox error is sent back to `coder_llm` together with the original user request and the failed code. The coder generates a corrected version, which is then tested again.
+
+```python
+def _debug_code_in_sandbox(original_request: str, code: str) -> str:
+    for attempt in range(MAX_CODE_ATTEMPTS):
+        result = run_code_in_sandbox(code)
+
+        if not result.startswith("Error:"):
+            return code
+
+        if attempt == MAX_CODE_ATTEMPTS - 1:
+            return code
+
+        repair_prompt = _build_code_repair_prompt(
+            original_request=original_request,
+            code=code,
+            error=result,
+        )
+
+        response = coder_llm.invoke(
+            [HumanMessage(content=repair_prompt)]
+        )
+
+        code = _strip_markdown(response.content)
+
+    return code
+```
+
+The flow is:
+
+```text
+Generate code
+    ↓
+Test in Docker sandbox
+    ↓
+Success? → continue to human approval
+    ↓ No
+Send code + error back to coder_llm
+    ↓
+Generate corrected code
+    ↓
+Test again
+```
+
+The sandbox execution in this loop is only a preflight check to verify that the code runs. It does not replace human approval. After the loop succeeds or uses all three attempts, the final code is still sent to `human_approval_node` before the normal `execute_code` tool is allowed to run.
+
+The code-generation retry loop is separate from the existing `retry_count` state field, which is used by the output-parser retry logic.
 
 ## _strip_markdown - the necessary hack
 
@@ -106,31 +191,13 @@ def _strip_markdown(text: str) -> str:
 
 I tried telling the coder LLM "Return ONLY raw Python code, no markdown, no explanation" in the prompt. It works most of the time. But "most of the time" is not good enough when the failure mode is a Python syntax error. The strip function is the defensive fallback.
 
-## The code_generated flag
-
-```python
-return {"messages": [new_message], "code_generated": True}
-```
-
-After the coder LLM runs, `code_generated` is set to `True`. The routing function `should_use_tool` checks this:
-
-```python
-if tool_name == "execute_code":
-    if not state.get("code_generated", False):
-        return "code_generation_node"  # go improve the code first
-    return "human_approval_node"       # code already good, go approve it
-```
-
-Without this flag, the agent would loop between the general LLM and code generation node indefinitely. The flag says "we've already done the code improvement step, skip it."
-
-After code is approved and executed (or rejected), `code_generated` is reset to `False` in `human_approval_node` so the next code request goes through the full improvement cycle.
-
 ## Gotchas and lessons learned
 
 - **The fake AIMessage trick.** When code generation comes from the input router (Path 1), there's no existing AIMessage with tool_calls - just a HumanMessage. We need to create a valid AIMessage with an `execute_code` tool_call to pass to ToolNode later. The fake AIMessage is added to the message history via `add_messages`. This looks like the agent called `execute_code`, which makes the conversation history coherent.
 - **Message ID must match in Path 2.** When updating an existing AIMessage (Path 2), the `id=last_message.id` is critical. LangGraph's `add_messages` reducer uses the message ID to decide whether to append or update. Reusing the same ID updates the existing message in place rather than duplicating it.
 - **The coder LLM has a longer num_predict.** I set `num_predict=2048` for the coder LLM vs 1024 for the general LLM because code outputs are longer. A function with documentation and type hints can easily hit 300-500 tokens.
-
+- **Sandbox testing does not replace human approval.** The self-debug loop executes generated code automatically inside the isolated Docker sandbox only as a preflight check to determine whether the code runs successfully. After the loop finishes, the final code still goes through `human_approval_node` before the normal `execute_code` tool execution.
+- **Code-generation retries are separate from output-parser retries.** The self-debug loop uses a local `attempt` counter and `MAX_CODE_ATTEMPTS`. It does not use the `retry_count` field in `AgentState`, which belongs to the unrelated output-parser retry mechanism.
 ---
 
 <- [Tools & ReAct Loop](tools-react-loop.md) | [Home](../README.md) | [Docker Sandbox](docker-sandbox.md) ->
