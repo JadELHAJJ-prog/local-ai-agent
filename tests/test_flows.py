@@ -322,6 +322,19 @@ class TestInputRouterNode:
         with patch("nodes.CODE_PATTERNS", ["write code"]):
             assert input_router_node(state)["input_type"] == "general"
 
+    @patch("nodes.router_llm")
+    def test_router_llm_failure_logs_a_warning(self, mock_router, caplog):
+        # A classifier failure must be observable, not a silent quality
+        # downgrade - see PR review on #1.
+        mock_router.invoke.side_effect = RuntimeError("Ollama unavailable")
+
+        state = make_state(messages=[HumanMessage(content="hello there")])
+
+        with caplog.at_level("WARNING", logger="nodes"):
+            input_router_node(state)
+
+        assert any("falling back" in record.message for record in caplog.records)
+
 
 class TestShouldRoute:
     """should_route reads input_type and returns the correct node name."""

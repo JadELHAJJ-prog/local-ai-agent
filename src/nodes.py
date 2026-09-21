@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import date
 from typing import Literal
@@ -11,6 +12,8 @@ from config import APPROVAL_PHRASES, CODE_PATTERNS, DOCUMENT_EXTENSIONS
 from models import coder_llm, llm
 from state import AgentState
 from tools import tools
+
+logger = logging.getLogger(__name__)
 
 # Bind tools to the reasoning LLM once at module load so every agent_node call reuses the same binding
 llm_with_tools = llm.bind_tools(tools)
@@ -80,6 +83,12 @@ def input_router_node(state: AgentState) -> dict:
         # Path present but extension is a media type, not a document format
         return {"input_type": "media"}
 
+    # Known, accepted trade-off: this LLM call costs a full model round-trip on
+    # every non-file/media message (roughly doubling latency for "general"
+    # turns, which also call agent_node's LLM right after) in exchange for
+    # accurate code-vs-general classification - see issue #1 for why keyword
+    # matching alone was replaced. Not addressed here; a lighter-weight
+    # classifier would need its own follow-up.
     try:
         decision = router_llm.invoke(
             [
@@ -120,6 +129,11 @@ Examples of "general":
     # If the classifier fails, fall back to the old keyword routing
     # so the graph still works instead of crashing
     except Exception:
+        logger.warning(
+            "router_llm classification failed, falling back to CODE_PATTERNS "
+            "keyword matching (degraded routing quality)",
+            exc_info=True,
+        )
         if any(pattern in content for pattern in CODE_PATTERNS):
             return {"input_type": "code"}
 
