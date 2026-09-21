@@ -26,7 +26,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage
 
@@ -493,9 +493,18 @@ class TestCodeGenerationNode:
         mock.content = code
         return mock
 
+    # Every test in this class mocks nodes.run_code_in_sandbox: code_generation_node
+    # now always runs generated code through _debug_code_in_sandbox before
+    # returning, and this suite must never make a real `docker run` call
+    # (see PR #36 review - it did, before this mock was added).
+
+    @patch("nodes.run_code_in_sandbox")
     @patch("nodes.coder_llm")
-    def test_router_entry_creates_execute_code_tool_call(self, mock_coder):
+    def test_router_entry_creates_execute_code_tool_call(
+        self, mock_coder, mock_sandbox
+    ):
         mock_coder.invoke.return_value = self._mock_coder_response("print('hello')")
+        mock_sandbox.return_value = (True, "hello")
         state = make_state(
             messages=[HumanMessage(content="write a hello world script")]
         )
@@ -505,22 +514,45 @@ class TestCodeGenerationNode:
         assert msg.tool_calls[0]["name"] == "execute_code"
         assert msg.tool_calls[0]["args"]["code"] == "print('hello')"
 
+    @patch("nodes.run_code_in_sandbox")
     @patch("nodes.coder_llm")
-    def test_router_entry_strips_markdown_from_coder_output(self, mock_coder):
+    def test_router_entry_strips_markdown_from_coder_output(
+        self, mock_coder, mock_sandbox
+    ):
         mock_coder.invoke.return_value = self._mock_coder_response(
             "```python\nprint('hello')\n```"
         )
+        mock_sandbox.return_value = (True, "hello")
         state = make_state(
             messages=[HumanMessage(content="write a hello world script")]
         )
         result = code_generation_node(state)
         assert result["messages"][0].tool_calls[0]["args"]["code"] == "print('hello')"
 
+    @patch("nodes.run_code_in_sandbox")
     @patch("nodes.coder_llm")
-    def test_agent_entry_improves_rough_code(self, mock_coder):
+    def test_router_entry_marks_code_that_never_verifies(
+        self, mock_coder, mock_sandbox
+    ):
+        # Regression test: unverified code must not reach human approval
+        # looking identical to code that actually passed the sandbox check.
+        mock_coder.invoke.return_value = self._mock_coder_response("still_broken()")
+        mock_sandbox.return_value = (False, "Error:\nboom")
+        state = make_state(
+            messages=[HumanMessage(content="write a hello world script")]
+        )
+        result = code_generation_node(state)
+        code = result["messages"][0].tool_calls[0]["args"]["code"]
+        assert "WARNING" in code
+        assert "still_broken()" in code
+
+    @patch("nodes.run_code_in_sandbox")
+    @patch("nodes.coder_llm")
+    def test_agent_entry_improves_rough_code(self, mock_coder, mock_sandbox):
         mock_coder.invoke.return_value = self._mock_coder_response(
             "x = [i for i in range(10)]"
         )
+        mock_sandbox.return_value = (True, "")
         rough_msg = AIMessage(
             id="msg-1",
             content="",
@@ -533,14 +565,18 @@ class TestCodeGenerationNode:
                 }
             ],
         )
-        state = make_state(messages=[rough_msg])
+        state = make_state(
+            messages=[HumanMessage(content="build a range list"), rough_msg]
+        )
         result = code_generation_node(state)
         updated = result["messages"][0]
         assert updated.tool_calls[0]["args"]["code"] == "x = [i for i in range(10)]"
 
+    @patch("nodes.run_code_in_sandbox")
     @patch("nodes.coder_llm")
-    def test_agent_entry_preserves_original_message_id(self, mock_coder):
+    def test_agent_entry_preserves_original_message_id(self, mock_coder, mock_sandbox):
         mock_coder.invoke.return_value = self._mock_coder_response("pass")
+        mock_sandbox.return_value = (True, "")
         rough_msg = AIMessage(
             id="original-id",
             content="",
@@ -553,10 +589,160 @@ class TestCodeGenerationNode:
                 }
             ],
         )
-        state = make_state(messages=[rough_msg])
+        state = make_state(messages=[HumanMessage(content="do nothing"), rough_msg])
         result = code_generation_node(state)
         assert result["messages"][0].id == "original-id"
         assert result["messages"][0].tool_calls[0]["id"] == "call-99"
+
+    @patch("nodes.run_code_in_sandbox")
+    @patch("nodes.coder_llm")
+    def test_agent_entry_skips_rejection_feedback_when_finding_original_request(
+        self, mock_coder, mock_sandbox
+    ):
+        # Regression test (PR #36 review): after a human rejection,
+        # human_approval_node injects a synthetic HumanMessage. The repair
+        # prompt's "original user request" must come from the real task,
+        # not that injected wrapper text. The repair prompt (which embeds
+        # original_request) is only built if the sandbox attempt fails, so
+        # the first sandbox call must fail to exercise that code path.
+        mock_sandbox.side_effect = [(False, "Error:\nboom"), (True, "")]
+        mock_coder.invoke.return_value = self._mock_coder_response("fixed()")
+
+        original_request = HumanMessage(
+            content="write a function that reverses a string"
+        )
+        rejection_feedback = HumanMessage(
+            content="The code was rejected. User feedback: 'wrong'. Please rewrite.",
+            additional_kwargs={"is_rejection_feedback": True},
+        )
+        rough_msg = AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "execute_code",
+                    "args": {"code": "broken()"},
+                    "id": "call-1",
+                    "type": "tool_call",
+                }
+            ],
+        )
+        state = make_state(messages=[original_request, rejection_feedback, rough_msg])
+        code_generation_node(state)
+
+        # First call is "improve rough_code", second is the sandbox repair
+        # prompt - the repair prompt is the one that embeds original_request.
+        repair_prompt = mock_coder.invoke.call_args_list[1][0][0][0].content
+        assert "reverses a string" in repair_prompt
+        assert "was rejected" not in repair_prompt
+
+
+class TestCodeSelfDebugLoop:
+
+    @patch("nodes.run_code_in_sandbox")
+    @patch("nodes.coder_llm")
+    def test_code_succeeds_on_first_attempt(self, mock_coder, mock_sandbox):
+        from nodes import _debug_code_in_sandbox
+
+        mock_sandbox.return_value = (True, "hello")
+
+        verified, code = _debug_code_in_sandbox(
+            original_request="Print hello",
+            code='print("hello")',
+        )
+
+        assert verified is True
+        assert code == 'print("hello")'
+        assert mock_sandbox.call_count == 1
+        mock_coder.invoke.assert_not_called()
+
+    @patch("nodes.run_code_in_sandbox")
+    @patch("nodes.coder_llm")
+    def test_code_with_error_prefixed_stdout_is_still_verified(
+        self, mock_coder, mock_sandbox
+    ):
+        # Regression test (PR #36 review): a clean exit (success=True) whose
+        # own stdout happens to start with the literal text "Error:" must
+        # not be misread as a sandbox failure - only the boolean flag from
+        # run_code_in_sandbox decides success, never string content.
+        from nodes import _debug_code_in_sandbox
+
+        mock_sandbox.return_value = (True, "Error: invalid input\n")
+
+        verified, code = _debug_code_in_sandbox(
+            original_request="Print a validation message",
+            code='print("Error: invalid input")',
+        )
+
+        assert verified is True
+        assert code == 'print("Error: invalid input")'
+        mock_coder.invoke.assert_not_called()
+
+    @patch("nodes.run_code_in_sandbox")
+    @patch("nodes.coder_llm")
+    def test_code_repairs_after_failure(self, mock_coder, mock_sandbox):
+        from nodes import _debug_code_in_sandbox
+
+        broken_code = "print(x)"
+        fixed_code = 'x = "hello"\nprint(x)'
+
+        mock_sandbox.side_effect = [
+            (False, "Error:\nNameError: name 'x' is not defined"),
+            (True, "hello"),
+        ]
+
+        mock_coder.invoke.return_value = MagicMock(content=fixed_code)
+
+        verified, code = _debug_code_in_sandbox(
+            original_request="Print hello",
+            code=broken_code,
+        )
+
+        assert verified is True
+        assert code == fixed_code
+        assert mock_sandbox.call_count == 2
+        assert mock_coder.invoke.call_count == 1
+
+    @patch("nodes.run_code_in_sandbox")
+    @patch("nodes.coder_llm")
+    def test_code_stops_after_three_failed_attempts(
+        self,
+        mock_coder,
+        mock_sandbox,
+    ):
+        from nodes import _debug_code_in_sandbox
+
+        mock_sandbox.return_value = (False, "Error:\nSomething went wrong")
+
+        mock_coder.invoke.side_effect = [
+            MagicMock(content="broken version 2"),
+            MagicMock(content="broken version 3"),
+        ]
+
+        verified, code = _debug_code_in_sandbox(
+            original_request="Do something",
+            code="broken version 1",
+        )
+
+        assert verified is False
+        assert code == "broken version 3"
+        assert mock_sandbox.call_count == 3
+        assert mock_coder.invoke.call_count == 2
+
+
+class TestMarkIfUnverified:
+    """_mark_if_unverified flags code that never passed the sandbox check."""
+
+    def test_verified_code_is_unchanged(self):
+        from nodes import _mark_if_unverified
+
+        assert _mark_if_unverified(True, "print(1)") == "print(1)"
+
+    def test_unverified_code_gets_warning_prefix(self):
+        from nodes import _mark_if_unverified
+
+        result = _mark_if_unverified(False, "print(1)")
+        assert "WARNING" in result
+        assert "print(1)" in result
 
 
 # ===========================================================================
@@ -830,6 +1016,56 @@ class TestExecuteCode:
         assert "no output" in result.lower()
 
 
+class TestRunCodeInSandbox:
+    """run_code_in_sandbox returns (success, output), not a string-prefix convention."""
+
+    def _setup_tmpfile_mock(self, mock_tmpfile, path="/tmp/test_code.py"):
+        mock_tmp = MagicMock()
+        mock_tmp.__enter__ = MagicMock(return_value=mock_tmp)
+        mock_tmp.__exit__ = MagicMock(return_value=False)
+        mock_tmp.name = path
+        mock_tmpfile.return_value = mock_tmp
+        return mock_tmp
+
+    @patch("tools.os.remove")
+    @patch("tools.os.path.exists", return_value=True)
+    @patch("tools.subprocess.run")
+    @patch("tools.tempfile.NamedTemporaryFile")
+    def test_clean_exit_with_error_prefixed_stdout_is_still_success(
+        self, mock_tmpfile, mock_run, mock_exists, mock_remove
+    ):
+        # Regression test (PR #36 review): a program that legitimately
+        # prints "Error: ..." on a clean exit (returncode 0) must report
+        # success=True - the caller must never infer failure from string
+        # content alone.
+        from tools import run_code_in_sandbox
+
+        self._setup_tmpfile_mock(mock_tmpfile)
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="Error: invalid input\n", stderr=""
+        )
+        success, output = run_code_in_sandbox("print('Error: invalid input')")
+        assert success is True
+        assert "Error: invalid input" in output
+
+    @patch("tools.os.remove")
+    @patch("tools.os.path.exists", return_value=True)
+    @patch("tools.subprocess.run")
+    @patch("tools.tempfile.NamedTemporaryFile")
+    def test_nonzero_exit_is_failure(
+        self, mock_tmpfile, mock_run, mock_exists, mock_remove
+    ):
+        from tools import run_code_in_sandbox
+
+        self._setup_tmpfile_mock(mock_tmpfile)
+        mock_run.return_value = MagicMock(
+            returncode=1, stdout="", stderr="NameError: x"
+        )
+        success, output = run_code_in_sandbox("print(x)")
+        assert success is False
+        assert "NameError" in output
+
+
 # ===========================================================================
 # Flow 8 — analyze_image tool
 # ===========================================================================
@@ -846,53 +1082,66 @@ class TestAnalyzeImage:
         assert "Error" in result and "not found" in result
 
     @patch("tools.vlm")
-    @patch("tools.os.path.exists", return_value=True)
-    @patch("builtins.open", new_callable=mock_open, read_data=b"bytes")
-    def test_successful_analysis_returns_vlm_content(self, _mock_open, _, mock_vlm):
-        # unittest.mock.mock_open (not a hand-rolled MagicMock) is required here:
+    def test_successful_analysis_returns_vlm_content(self, mock_vlm, tmp_path):
+        # A real tmp_path file (not a mocked open()) is required here:
         # analyze_image's mimetypes.guess_type() call lazily reads real files
         # (e.g. /etc/mime.types) via open() on its first-ever invocation in the
-        # process. A plain MagicMock's readline() never returns "" to signal
-        # EOF, so mimetypes' internal parse loop spins forever; mock_open
-        # correctly implements read/readline/iteration semantics instead.
+        # process. A hand-rolled MagicMock's readline() never returns "" to
+        # signal EOF, so mimetypes' internal parse loop spins forever if
+        # open() is globally mocked - writing a real (tiny) file sidesteps
+        # the problem entirely instead of having to mock open() correctly.
         from tools import analyze_image
 
+        image_path = tmp_path / "photo.jpg"
+        image_path.write_bytes(b"bytes")
+
         mock_vlm.invoke.return_value = MagicMock(content="A cat on a table")
-        result = analyze_image.invoke({"image_path": "/tmp/photo.jpg"})
+
+        result = analyze_image.invoke({"image_path": str(image_path)})
+
         assert result == "A cat on a table"
 
     @patch("tools.vlm")
-    @patch("tools.os.path.exists", return_value=True)
-    @patch("builtins.open", new_callable=mock_open, read_data=b"bytes")
-    def test_png_file_uses_image_png_mime_type(self, _mock_open, _, mock_vlm):
+    def test_png_file_uses_image_png_mime_type(self, mock_vlm, tmp_path):
         from tools import analyze_image
 
+        image_path = tmp_path / "photo.png"
+        image_path.write_bytes(b"bytes")
+
         mock_vlm.invoke.return_value = MagicMock(content="description")
-        analyze_image.invoke({"image_path": "/tmp/photo.png"})
+
+        analyze_image.invoke({"image_path": str(image_path)})
+
         call_args = mock_vlm.invoke.call_args[0][0]
         url = call_args[0].content[1]["image_url"]["url"]
+
         assert url.startswith("data:image/png;base64,")
 
     @patch("tools.vlm")
-    @patch("tools.os.path.exists", return_value=True)
-    @patch("builtins.open", new_callable=mock_open, read_data=b"bytes")
-    def test_jpg_file_uses_image_jpeg_mime_type(self, _mock_open, _, mock_vlm):
+    def test_jpg_file_uses_image_jpeg_mime_type(self, mock_vlm, tmp_path):
         from tools import analyze_image
 
+        image_path = tmp_path / "photo.jpg"
+        image_path.write_bytes(b"bytes")
+
         mock_vlm.invoke.return_value = MagicMock(content="description")
-        analyze_image.invoke({"image_path": "/tmp/photo.jpg"})
+
+        analyze_image.invoke({"image_path": str(image_path)})
+
         call_args = mock_vlm.invoke.call_args[0][0]
         url = call_args[0].content[1]["image_url"]["url"]
+
         assert url.startswith("data:image/jpeg;base64,")
 
     @patch("tools.vlm")
-    @patch("tools.os.path.exists", return_value=True)
-    @patch("builtins.open", new_callable=mock_open, read_data=b"bytes")
-    def test_empty_vlm_response_returns_fallback_message(self, _mock_open, _, mock_vlm):
+    def test_empty_vlm_response_returns_fallback_message(self, mock_vlm, tmp_path):
         from tools import analyze_image
 
+        image_path = tmp_path / "photo.jpg"
+        image_path.write_bytes(b"bytes")
+
         mock_vlm.invoke.return_value = MagicMock(content="")
-        result = analyze_image.invoke({"image_path": "/tmp/photo.jpg"})
+        result = analyze_image.invoke({"image_path": str(image_path)})
         assert "No response" in result
 
 

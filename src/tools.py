@@ -32,19 +32,24 @@ def search_web(query: str) -> str:
         )
 
 
-@tool
-def execute_code(code: str) -> str:
-    """Execute Python code safely in an isolated Docker container.
-    Use this when the user asks to run code, perform calculations,
-    or test a Python script. Input should be valid Python code."""
+def run_code_in_sandbox(code: str) -> tuple[bool, str]:
+    """Run Python code inside the isolated Docker sandbox.
+
+    Returns (success, output) rather than overloading a single string with
+    an "Error:"-prefix convention: the program's own legitimate stdout can
+    itself start with the literal text "Error:" (e.g. `print("Error: bad
+    input")` on a clean exit), which a prefix check would misclassify as a
+    sandbox failure.
+    """
     tmp_path = None
+
     try:
-        # Write the code to a temp file so Docker can mount it read-only into the container
+        # Write the code to a temporary Python file
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tmp:
             tmp.write(code)
             tmp_path = tmp.name
 
-        # Resource-constrained Docker run: no network, 128MB RAM cap, 0.5 CPU, 30s timeout
+        # Run the temporary Python file inside Docker
         result = subprocess.run(
             [
                 "docker",
@@ -67,22 +72,31 @@ def execute_code(code: str) -> str:
             timeout=30,
         )
 
-        # Distinguish a clean exit from a non-zero error exit
+        # Check whether the code ran successfully
         if result.returncode == 0:
-            return result.stdout or "Code executed successfully with no output."
-        else:
-            return f"Error:\n{result.stderr}"
+            return True, (result.stdout or "Code executed successfully with no output.")
 
-    # Surface timeout as a user-readable message instead of a raw exception
+        return False, f"Error:\n{result.stderr}"
+
     except subprocess.TimeoutExpired:
-        return "Error: Code execution timed out after 30 seconds."
-    # Catch Docker not found, permission errors, or any other unexpected failure
+        return False, "Error: Code execution timed out after 30 seconds."
+
     except Exception as e:
-        return f"Error: {e}"
+        return False, f"Error: {e}"
+
     finally:
-        # Always delete the temp file even if execution failed or timed out
         if tmp_path and os.path.exists(tmp_path):
             os.remove(tmp_path)
+
+
+@tool
+def execute_code(code: str) -> str:
+    """Execute Python code safely in an isolated Docker container.
+    Use this when the user asks to run code, perform calculations,
+    or test a Python script. Input should be valid Python code.
+    """
+    _, output = run_code_in_sandbox(code)
+    return output
 
 
 @tool
