@@ -8,8 +8,7 @@ from langgraph.types import interrupt
 from config import APPROVAL_PHRASES, CODE_PATTERNS, DOCUMENT_EXTENSIONS
 from models import coder_llm, llm
 from state import AgentState
-from tools import tools
-from tools import run_code_in_sandbox
+from tools import run_code_in_sandbox, tools
 
 # Bind tools to the reasoning LLM once at module load so every agent_node call reuses the same binding
 llm_with_tools = llm.bind_tools(tools)
@@ -117,12 +116,14 @@ def should_use_tool(state: AgentState) -> str:
 # --- Code generation ---
 MAX_CODE_ATTEMPTS = 3
 
+
 def _build_code_prompt(action: str, content: str) -> str:
     # Shared instruction header ensures both generation and improvement paths use identical format rules
     return (
         f"You are an expert Python developer.\n"
         f"{action}. Return ONLY raw Python code, no markdown, no explanation:\n\n{content}"
     )
+
 
 def _build_code_repair_prompt(
     original_request: str,
@@ -144,6 +145,7 @@ def _build_code_repair_prompt(
         repair_context,
     )
 
+
 def _strip_markdown(text: str) -> str:
     # Model used a python-tagged fence: extract the block between the opening and closing backticks
     if "```python" in text:
@@ -158,7 +160,6 @@ def _strip_markdown(text: str) -> str:
 def _debug_code_in_sandbox(original_request: str, code: str) -> str:
     for attempt in range(MAX_CODE_ATTEMPTS):
         result = run_code_in_sandbox(code)
-        
 
         # No error: code worked, so stop retrying
         if not result.startswith("Error:"):
@@ -175,13 +176,12 @@ def _debug_code_in_sandbox(original_request: str, code: str) -> str:
             error=result,
         )
 
-        response = coder_llm.invoke(
-            [HumanMessage(content=repair_prompt)]
-        )
+        response = coder_llm.invoke([HumanMessage(content=repair_prompt)])
 
         code = _strip_markdown(response.content)
 
     return code
+
 
 def code_generation_node(state: AgentState) -> dict:
     last_message = state["messages"][-1]
@@ -260,6 +260,7 @@ def code_generation_node(state: AgentState) -> dict:
         ],
     )
     return {"messages": [updated_message]}
+
 
 # --- Human approval ---
 # Pause graph execution and surface the pending tool call for human review before running it

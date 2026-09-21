@@ -31,17 +31,14 @@ def search_web(query: str) -> str:
             ]
         )
 
+
 def run_code_in_sandbox(code: str) -> str:
     """Run Python code inside the isolated Docker sandbox."""
     tmp_path = None
 
     try:
         # Write the code to a temporary Python file
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            suffix=".py",
-            delete=False
-        ) as tmp:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as tmp:
             tmp.write(code)
             tmp_path = tmp.name
 
@@ -92,7 +89,8 @@ def execute_code(code: str) -> str:
     or test a Python script. Input should be valid Python code.
     """
     return run_code_in_sandbox(code)
-    
+
+
 @tool
 def analyze_image(image_path: str, question: str = "What is in this image?") -> str:
     """Analyze an image using vision AI. Use this when the user

@@ -343,6 +343,7 @@ class TestCodeGenerationNode:
         assert result["messages"][0].id == "original-id"
         assert result["messages"][0].tool_calls[0]["id"] == "call-99"
 
+
 class TestCodeSelfDebugLoop:
 
     @patch("nodes.run_code_in_sandbox")
@@ -361,7 +362,6 @@ class TestCodeSelfDebugLoop:
         assert mock_sandbox.call_count == 1
         mock_coder.invoke.assert_not_called()
 
-
     @patch("nodes.run_code_in_sandbox")
     @patch("nodes.coder_llm")
     def test_code_repairs_after_failure(self, mock_coder, mock_sandbox):
@@ -375,9 +375,7 @@ class TestCodeSelfDebugLoop:
             "hello",
         ]
 
-        mock_coder.invoke.return_value = MagicMock(
-            content=fixed_code
-        )
+        mock_coder.invoke.return_value = MagicMock(content=fixed_code)
 
         result = _debug_code_in_sandbox(
             original_request="Print hello",
@@ -387,7 +385,6 @@ class TestCodeSelfDebugLoop:
         assert result == fixed_code
         assert mock_sandbox.call_count == 2
         assert mock_coder.invoke.call_count == 1
-
 
     @patch("nodes.run_code_in_sandbox")
     @patch("nodes.coder_llm")
@@ -413,6 +410,7 @@ class TestCodeSelfDebugLoop:
         assert result == "broken version 3"
         assert mock_sandbox.call_count == 3
         assert mock_coder.invoke.call_count == 2
+
 
 # ===========================================================================
 # Flow 4 — human_approval_node + should_execute_tool
