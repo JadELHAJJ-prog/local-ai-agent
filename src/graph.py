@@ -8,6 +8,7 @@ from nodes import (
     human_approval_node,
     input_router_node,
     output_parser_node,
+    research_subagent_node,
     should_execute_tool,
     should_retry,
     should_route,
@@ -27,6 +28,7 @@ def build_graph(memory: SqliteSaver):
     graph.add_node("tool_node", ToolNode(tools))
     graph.add_node("human_approval_node", human_approval_node)
     graph.add_node("code_generation_node", code_generation_node)
+    graph.add_node("research_subagent_node", research_subagent_node)
 
     graph.set_entry_point("input_router_node")
 
@@ -34,6 +36,7 @@ def build_graph(memory: SqliteSaver):
     graph.add_edge("tool_node", "agent_node")
     # code_generation_node always proceeds to human approval before any code runs
     graph.add_edge("code_generation_node", "human_approval_node")
+    graph.add_edge("research_subagent_node", "output_parser_node")
 
     # Entry point dispatch: routes code requests to the coder model, all other types to the agent
     # should_route reads input_type from state
@@ -78,6 +81,7 @@ def build_graph(memory: SqliteSaver):
         should_use_tool,
         {
             "code_generation_node": "code_generation_node",
+            "research_subagent_node": "research_subagent_node",
             "tool_node": "tool_node",
             "output_parser_node": "output_parser_node",
         },

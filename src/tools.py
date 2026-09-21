@@ -32,6 +32,23 @@ def search_web(query: str) -> str:
         )
 
 
+@tool
+def research_web(question: str) -> str:
+    """Delegate a complex web research question to the research subagent.
+    Use this when answering likely requires multiple searches, query refinement,
+    comparing sources, or deeper investigation beyond a single web search."""
+    # This body should never actually run: should_use_tool routes any turn
+    # containing a research_web call to research_subagent_node instead of
+    # ToolNode. If it does run (e.g. a future change to should_use_tool's
+    # routing), fail loudly rather than silently returning the raw question
+    # text disguised as a finished research answer.
+    raise RuntimeError(
+        "research_web was executed directly instead of being routed to "
+        "research_subagent_node - this indicates a routing bug, not a "
+        "valid research result."
+    )
+
+
 def run_code_in_sandbox(code: str) -> tuple[bool, str]:
     """Run Python code inside the isolated Docker sandbox.
 
@@ -282,4 +299,11 @@ Please answer the question based on the document content.""")])
     return response.content or "No response generated."
 
 
-tools = [search_web, execute_code, analyze_image, analyze_video, analyze_document]
+tools = [
+    search_web,
+    research_web,
+    execute_code,
+    analyze_image,
+    analyze_video,
+    analyze_document,
+]

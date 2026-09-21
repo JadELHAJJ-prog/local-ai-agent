@@ -37,6 +37,7 @@ from nodes import (
     human_approval_node,
     input_router_node,
     output_parser_node,
+    research_subagent_node,
     should_execute_tool,
     should_retry,
     should_route,
@@ -438,6 +439,46 @@ class TestShouldUseTool:
             ],
         )
         assert should_use_tool(make_state(messages=[msg])) == "tool_node"
+
+    def test_research_web_call_goes_to_research_subagent(self):
+        msg = AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "research_web",
+                    "args": {"question": "Compare the latest AI agent frameworks"},
+                    "id": "c6",
+                    "type": "tool_call",
+                }
+            ],
+        )
+
+        assert should_use_tool(make_state(messages=[msg])) == "research_subagent_node"
+
+    def test_research_web_second_call_still_routes_to_research_subagent(self):
+        # Regression test (PR #38 review): should_use_tool previously only
+        # inspected tool_calls[0], so a research_web call appearing after
+        # another tool call in the same turn would be misrouted to
+        # tool_node instead of research_subagent_node.
+        msg = AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "search_web",
+                    "args": {"query": "AI"},
+                    "id": "c7",
+                    "type": "tool_call",
+                },
+                {
+                    "name": "research_web",
+                    "args": {"question": "Compare AI agent frameworks"},
+                    "id": "c8",
+                    "type": "tool_call",
+                },
+            ],
+        )
+
+        assert should_use_tool(make_state(messages=[msg])) == "research_subagent_node"
 
 
 # ===========================================================================
@@ -883,6 +924,24 @@ class TestShouldRetry:
 # ===========================================================================
 
 
+class TestResearchWebTool:
+    """research_web's body must never actually run - it exists only so the
+    model has something to call; should_use_tool always routes it to
+    research_subagent_node instead of ToolNode."""
+
+    def test_direct_invocation_raises_instead_of_echoing_the_question(self):
+        # Regression test (PR #38 review): the dummy body used to just
+        # `return question`, so if it were ever routed through ToolNode by
+        # mistake, the raw question text would silently pass for a finished
+        # research answer. It must fail loudly instead.
+        import pytest
+
+        from tools import research_web
+
+        with pytest.raises(Exception):
+            research_web.invoke({"question": "anything"})
+
+
 class TestSearchWeb:
     """search_web wraps DuckDuckGo and formats results as readable text."""
 
@@ -1309,3 +1368,150 @@ class TestParseUserInput:
         text, path = self.parse("read the file /tmp/notes.txt")
         assert path is None
         assert text == "read the file /tmp/notes.txt"
+
+
+# ===========================================================================
+# Flow 13 — research_subagent_node
+# ===========================================================================
+
+
+class TestResearchSubagentNode:
+    """research_subagent_node performs bounded multi-step web research."""
+
+    @patch("nodes.research_llm")
+    @patch("nodes.search_web")
+    def test_single_search_sufficient_stops_after_one_search(
+        self, mock_search, mock_research_llm
+    ):
+        mock_search.invoke.return_value = (
+            "Title: Python\n"
+            "URL: https://example.com\n"
+            "Summary: Python was created by Guido van Rossum."
+        )
+
+        decision = MagicMock()
+        decision.sufficient = True
+        decision.answer = "Python was created by Guido van Rossum."
+        decision.next_query = ""
+
+        mock_research_llm.invoke.return_value = decision
+
+        state = make_state(messages=[HumanMessage(content="Who created Python?")])
+
+        result = research_subagent_node(state)
+
+        assert result["messages"][0].content == (
+            "Python was created by Guido van Rossum."
+        )
+        assert mock_search.invoke.call_count == 1
+
+    @patch("nodes.research_llm")
+    @patch("nodes.search_web")
+    def test_multiple_searches_when_first_result_is_insufficient(
+        self, mock_search, mock_research_llm
+    ):
+        mock_search.invoke.side_effect = [
+            "Title: Result 1\n"
+            "URL: https://example.com/1\n"
+            "Summary: Not enough information.",
+            "Title: Result 2\n"
+            "URL: https://example.com/2\n"
+            "Summary: The answer is 42.",
+        ]
+
+        first_decision = MagicMock()
+        first_decision.sufficient = False
+        first_decision.answer = ""
+        first_decision.next_query = "more specific research query"
+
+        second_decision = MagicMock()
+        second_decision.sufficient = True
+        second_decision.answer = "The answer is 42."
+        second_decision.next_query = ""
+
+        mock_research_llm.invoke.side_effect = [
+            first_decision,
+            second_decision,
+        ]
+
+        state = make_state(messages=[HumanMessage(content="What is the answer?")])
+
+        result = research_subagent_node(state)
+
+        assert result["messages"][0].content == "The answer is 42."
+        assert mock_search.invoke.call_count == 2
+        assert mock_search.invoke.call_args_list[1].args[0] == {
+            "query": "more specific research query"
+        }
+
+    @patch("nodes.research_llm")
+    @patch("nodes.search_web")
+    def test_iteration_budget_exhausted_stops_after_three_searches(
+        self, mock_search, mock_research_llm
+    ):
+        mock_search.invoke.return_value = (
+            "Title: Result\n"
+            "URL: https://example.com\n"
+            "Summary: Still not enough information."
+        )
+
+        decision = MagicMock()
+        decision.sufficient = False
+        decision.answer = ""
+        decision.next_query = "try another query"
+
+        mock_research_llm.invoke.return_value = decision
+
+        state = make_state(
+            messages=[HumanMessage(content="Research something difficult")]
+        )
+
+        result = research_subagent_node(state)
+
+        assert mock_search.invoke.call_count == 3
+        assert "research search limit" in result["messages"][0].content.lower()
+
+    @patch("nodes.research_llm")
+    @patch("nodes.search_web")
+    def test_empty_next_query_stops_early_instead_of_repeating_search(
+        self, mock_search, mock_research_llm
+    ):
+        # Regression test (PR #38 review): if the evaluator says results are
+        # insufficient but returns no next_query, continuing would just
+        # repeat the identical search for the rest of the budget - the loop
+        # must stop instead of silently burning all 3 attempts on repeats.
+        mock_search.invoke.return_value = (
+            "Title: Result\nURL: https://example.com\nSummary: unclear."
+        )
+
+        decision = MagicMock()
+        decision.sufficient = False
+        decision.answer = ""
+        decision.next_query = ""
+
+        mock_research_llm.invoke.return_value = decision
+
+        state = make_state(messages=[HumanMessage(content="Research something")])
+
+        result = research_subagent_node(state)
+
+        assert mock_search.invoke.call_count == 1
+        assert "research search limit" in result["messages"][0].content.lower()
+
+    @patch("nodes.research_llm")
+    @patch("nodes.search_web")
+    def test_search_error_returns_graceful_message_instead_of_crashing(
+        self, mock_search, mock_research_llm
+    ):
+        # Regression test (PR #38 review): search_web.invoke() is called
+        # directly here, bypassing ToolNode's error handling, so a DDGS
+        # failure (rate-limit, timeout, network error) must be caught here.
+        mock_search.invoke.side_effect = RuntimeError("DDGS rate limit exceeded")
+
+        state = make_state(messages=[HumanMessage(content="Research something")])
+
+        result = research_subagent_node(state)
+
+        assert "research" in result["messages"][0].content.lower()
+        assert "rate limit exceeded" in result["messages"][0].content
+        mock_research_llm.invoke.assert_not_called()
