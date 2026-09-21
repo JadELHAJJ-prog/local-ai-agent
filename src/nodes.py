@@ -1,13 +1,13 @@
 import uuid
 from datetime import date
 
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langgraph.types import interrupt
 
+from config import APPROVAL_PHRASES, CODE_PATTERNS, DOCUMENT_EXTENSIONS
+from models import coder_llm, llm
 from state import AgentState
-from config import CODE_PATTERNS, APPROVAL_PHRASES, DOCUMENT_EXTENSIONS
-from models import llm, coder_llm
 from tools import tools
 from tools import run_code_in_sandbox
 
@@ -190,7 +190,13 @@ def code_generation_node(state: AgentState) -> dict:
     if not hasattr(last_message, "tool_calls") or not last_message.tool_calls:
         user_request = last_message.content
         response = coder_llm.invoke(
-            [HumanMessage(content=_build_code_prompt("Write Python code for this task", user_request))]
+            [
+                HumanMessage(
+                    content=_build_code_prompt(
+                        "Write Python code for this task", user_request
+                    )
+                )
+            ]
         )
         code = _strip_markdown(response.content)
         code = _debug_code_in_sandbox(
@@ -226,7 +232,11 @@ def code_generation_node(state: AgentState) -> dict:
     )
 
     response = coder_llm.invoke(
-        [HumanMessage(content=_build_code_prompt("Improve and optimize this code", rough_code))]
+        [
+            HumanMessage(
+                content=_build_code_prompt("Improve and optimize this code", rough_code)
+            )
+        ]
     )
     improved_code = _strip_markdown(response.content)
 

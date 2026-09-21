@@ -1,0 +1,7 @@
+# Dev/CI-only tooling - not needed to run the agent itself.
+# Install with: pip install -r requirements.txt -r requirements-dev.txt
+
+pytest==9.0.3
+black==26.5.1
+ruff==0.16.4
+pip-audit==2.10.1
