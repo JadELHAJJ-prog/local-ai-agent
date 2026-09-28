@@ -28,6 +28,7 @@ prompt = ChatPromptTemplate.from_messages(
 
 TOOLS - only use when explicitly needed:
 
+- calculate: Use for complex arithmetic, large-number calculations, or algebraic equations where an exact answer is important. Pass only the mathematical expression. Do not use it for trivial arithmetic you can answer directly.
 - search_web: Use for a simple web lookup where one search is likely enough, especially news, current events, or real-time data.
 - research_web: Use for complex web research that may require multiple searches, refined queries, comparing information, or deeper investigation.
 - execute_code: ONLY if user says "run", "execute", or "test this code".
@@ -44,6 +45,8 @@ Examples of NO tool needed:
 - "who are you" -> just introduce yourself
 
 Examples of tool needed:
+- "what is (92837 * 4729) / 17?" -> use calculate
+- "solve 2*x + 3 = 7" -> use calculate
 - "what is the latest news about AI" -> use search_web
 - "research the latest developments in AI agents and compare the main approaches" -> use research_web
 - "investigate why Python introduced free-threading and summarize the main reasons" -> use research_web

@@ -6,6 +6,7 @@ langgraph-checkpoint-sqlite==3.0.3
 langgraph-prebuilt==1.0.13
 langsmith==0.8.0
 pydantic==2.13.3
+sympy==1.14.0
 
 # Web Search
 ddgs==9.14.2
