@@ -11,13 +11,14 @@ Flows covered:
   Flow 3  - code_generation_node + _strip_markdown + _build_code_prompt
   Flow 4  - human_approval_node + should_execute_tool
   Flow 5  - output_parser_node + should_retry
-  Flow 6  - search_web tool
-  Flow 7  - execute_code tool
-  Flow 8  - analyze_image tool
-  Flow 9  - analyze_video tool
-  Flow 10 - analyze_document tool
-  Flow 11 - trim_messages_window
-  Flow 12 - parse_user_input (main.py utility)
+  Flow 6  - calculate tool
+  Flow 7  - search_web tool
+  Flow 8  - execute_code tool
+  Flow 9  - analyze_image tool
+  Flow 10 - analyze_video tool
+  Flow 11 - analyze_document tool
+  Flow 12 - trim_messages_window
+  Flow 13 - parse_user_input (main.py utility)
 """
 
 import os
@@ -392,6 +393,20 @@ class TestShouldUseTool:
                     "name": "search_web",
                     "args": {"query": "AI"},
                     "id": "c2",
+                    "type": "tool_call",
+                }
+            ],
+        )
+        assert should_use_tool(make_state(messages=[msg])) == "tool_node"
+
+    def test_calculate_call_goes_to_tool_node(self):
+        msg = AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "calculate",
+                    "args": {"expression": "92837 * 4729"},
+                    "id": "calc1",
                     "type": "tool_call",
                 }
             ],
@@ -920,7 +935,70 @@ class TestShouldRetry:
 
 
 # ===========================================================================
-# Flow 6 — search_web tool
+# Flow 6 — calculate tool
+# ===========================================================================
+
+
+class TestCalculate:
+    """calculate evaluates arithmetic and solves basic algebra safely."""
+
+    def test_tool_is_registered(self):
+        from tools import tools
+
+        assert "calculate" in {registered_tool.name for registered_tool in tools}
+
+    def test_complex_arithmetic_returns_exact_result(self):
+        from tools import calculate
+
+        result = calculate.invoke({"expression": "(92837 * 4729) / 17"})
+        assert result == "25825069"
+
+    def test_operator_precedence(self):
+        from tools import calculate
+
+        assert calculate.invoke({"expression": "2 + 3 * 4"}) == "14"
+
+    def test_basic_algebra_equation(self):
+        from tools import calculate
+
+        assert calculate.invoke({"expression": "2*x + 3 = 7"}) == "x = 2"
+
+    def test_symbolic_simplification(self):
+        from tools import calculate
+
+        assert calculate.invoke({"expression": "(x**2 - 1) / (x - 1)"}) == "x + 1"
+
+    def test_invalid_expression_returns_readable_error(self):
+        from tools import calculate
+
+        result = calculate.invoke({"expression": "2 + * 3"})
+        assert result.startswith("Error: Invalid mathematical expression")
+
+    def test_python_syntax_is_rejected(self):
+        from tools import calculate
+
+        result = calculate.invoke({"expression": "__import__('os').system('id')"})
+        assert result.startswith("Error: Invalid mathematical expression")
+
+    def test_python_statement_keywords_return_readable_errors(self):
+        from tools import calculate
+
+        statements = [
+            "import os",
+            "del x",
+            "pass",
+            "raise x",
+            "global x",
+            "assert x",
+        ]
+
+        for statement in statements:
+            result = calculate.invoke({"expression": statement})
+            assert result.startswith("Error: Invalid mathematical expression")
+
+
+# ===========================================================================
+# Flow 7 — search_web tool
 # ===========================================================================
 
 
@@ -988,7 +1066,7 @@ class TestSearchWeb:
 
 
 # ===========================================================================
-# Flow 7 — execute_code tool
+# Flow 8 — execute_code tool
 # ===========================================================================
 
 
@@ -1126,7 +1204,7 @@ class TestRunCodeInSandbox:
 
 
 # ===========================================================================
-# Flow 8 — analyze_image tool
+# Flow 9 — analyze_image tool
 # ===========================================================================
 
 
@@ -1205,7 +1283,7 @@ class TestAnalyzeImage:
 
 
 # ===========================================================================
-# Flow 9 — analyze_video tool
+# Flow 10 — analyze_video tool
 # ===========================================================================
 
 
@@ -1246,7 +1324,7 @@ class TestAnalyzeVideo:
 
 
 # ===========================================================================
-# Flow 10 — analyze_document tool
+# Flow 11 — analyze_document tool
 # ===========================================================================
 
 
@@ -1299,7 +1377,7 @@ class TestAnalyzeDocument:
 
 
 # ===========================================================================
-# Flow 11 — trim_messages_window
+# Flow 12 — trim_messages_window
 # ===========================================================================
 
 
@@ -1326,7 +1404,7 @@ class TestTrimMessagesWindow:
 
 
 # ===========================================================================
-# Flow 12 — parse_user_input (main.py utility)
+# Flow 13 — parse_user_input (main.py utility)
 # ===========================================================================
 
 

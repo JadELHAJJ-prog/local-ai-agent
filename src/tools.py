@@ -1,16 +1,125 @@
 import base64
 import mimetypes
 import os
+import re
 import subprocess
 import tempfile
 
 import cv2
+import sympy
 from ddgs import DDGS
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import tool
 
 from config import MAX_FRAMES, SANDBOX_IMAGE
 from models import llm, vlm
+
+MAX_CALCULATION_LENGTH = 300
+MAX_CALCULATION_OPERATIONS = 100
+
+CALCULATOR_NAMES = {
+    "Abs": sympy.Abs,
+    "E": sympy.E,
+    "I": sympy.I,
+    "abs": sympy.Abs,
+    "cos": sympy.cos,
+    "exp": sympy.exp,
+    "log": sympy.log,
+    "pi": sympy.pi,
+    "sin": sympy.sin,
+    "sqrt": sympy.sqrt,
+    "tan": sympy.tan,
+}
+
+
+def _parse_calculation(expression: str) -> sympy.Expr:
+    """Parse a restricted mathematical expression without exposing Python names."""
+    if not re.fullmatch(r"[0-9A-Za-z+\-*/^().,\s]+", expression):
+        raise ValueError("unsupported characters")
+
+    function_names = re.findall(r"([A-Za-z][A-Za-z0-9]*)\s*\(", expression)
+    unsupported_functions = set(function_names) - set(CALCULATOR_NAMES)
+    if unsupported_functions:
+        names = ", ".join(sorted(unsupported_functions))
+        raise ValueError(f"unsupported function: {names}")
+
+    local_names = dict(CALCULATOR_NAMES)
+    identifiers = set(re.findall(r"[A-Za-z][A-Za-z0-9]*", expression))
+    for identifier in identifiers - set(local_names):
+        local_names[identifier] = sympy.Symbol(identifier)
+
+    parsed = sympy.sympify(
+        expression.replace("^", "**"),
+        locals=local_names,
+        evaluate=False,
+    )
+    if not isinstance(parsed, sympy.Expr):
+        raise ValueError("input is not a mathematical expression")
+    if sympy.count_ops(parsed) > MAX_CALCULATION_OPERATIONS:
+        raise ValueError("expression is too complex")
+
+    for power in parsed.atoms(sympy.Pow):
+        if power.exp.is_Integer and abs(int(power.exp)) > 1000:
+            raise ValueError("exponent is too large")
+
+    return parsed
+
+
+def _format_solutions(solutions: list[dict], symbols: list[sympy.Symbol]) -> str:
+    """Format one or more solution mappings for an equation."""
+    if not solutions:
+        return "No solution found."
+
+    formatted = []
+    for solution in solutions:
+        assignments = [
+            f"{symbol} = {sympy.simplify(solution[symbol])}"
+            for symbol in symbols
+            if symbol in solution
+        ]
+        formatted.append(", ".join(assignments))
+    return "; ".join(item for item in formatted if item) or "No solution found."
+
+
+@tool
+def calculate(expression: str) -> str:
+    """Reliably evaluate complex arithmetic or solve an algebraic equation.
+    Use mathematical syntax only, such as '(92837 * 4729) / 17',
+    'sqrt(2) + pi', or '2*x + 3 = 7'. Do not use for trivial arithmetic.
+    """
+    expression = expression.strip()
+    if not expression:
+        return "Error: Please provide a mathematical expression."
+    if len(expression) > MAX_CALCULATION_LENGTH:
+        return "Error: Expression is too long."
+
+    try:
+        if expression.count("=") > 1:
+            raise ValueError("only one equals sign is supported")
+
+        if "=" in expression:
+            left_text, right_text = expression.split("=", maxsplit=1)
+            if not left_text.strip() or not right_text.strip():
+                raise ValueError("both sides of the equation are required")
+
+            left = _parse_calculation(left_text)
+            right = _parse_calculation(right_text)
+            equation = sympy.Eq(left, right)
+            symbols = sorted(equation.free_symbols, key=lambda item: item.name)
+
+            if not symbols:
+                return str(bool(equation))
+
+            solutions = sympy.solve(equation, symbols, dict=True)
+            return _format_solutions(solutions, symbols)
+
+        result = sympy.simplify(_parse_calculation(expression))
+        rendered = str(result)
+        if len(rendered) > 10_000:
+            return "Error: Result is too large to display."
+        return rendered
+    except Exception as exc:
+        return f"Error: Invalid mathematical expression ({exc})."
 
 
 @tool
@@ -300,6 +409,7 @@ Please answer the question based on the document content.""")])
 
 
 tools = [
+    calculate,
     search_web,
     research_web,
     execute_code,
