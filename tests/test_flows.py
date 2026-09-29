@@ -980,6 +980,22 @@ class TestCalculate:
         result = calculate.invoke({"expression": "__import__('os').system('id')"})
         assert result.startswith("Error: Invalid mathematical expression")
 
+    def test_python_statement_keywords_return_readable_errors(self):
+        from tools import calculate
+
+        statements = [
+            "import os",
+            "del x",
+            "pass",
+            "raise x",
+            "global x",
+            "assert x",
+        ]
+
+        for statement in statements:
+            result = calculate.invoke({"expression": statement})
+            assert result.startswith("Error: Invalid mathematical expression")
+
 
 # ===========================================================================
 # Flow 7 — search_web tool

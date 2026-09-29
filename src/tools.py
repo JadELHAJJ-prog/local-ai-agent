@@ -118,7 +118,7 @@ def calculate(expression: str) -> str:
         if len(rendered) > 10_000:
             return "Error: Result is too large to display."
         return rendered
-    except (ArithmeticError, TypeError, ValueError, sympy.SympifyError) as exc:
+    except Exception as exc:
         return f"Error: Invalid mathematical expression ({exc})."
 
 
