@@ -3,12 +3,17 @@ import uuid
 from datetime import date
 from typing import Literal
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langgraph.types import interrupt
 from pydantic import BaseModel
 
-from config import APPROVAL_PHRASES, CODE_PATTERNS, DOCUMENT_EXTENSIONS
+from config import (
+    APPROVAL_PHRASES,
+    CODE_PATTERNS,
+    CONVERSATION_SUMMARY_KEEP_MESSAGES,
+    DOCUMENT_EXTENSIONS,
+)
 from models import coder_llm, llm
 from state import AgentState
 from tools import run_code_in_sandbox, search_web, tools
@@ -58,11 +63,89 @@ Examples of tool needed:
 
 
 # Slice the message list down to the most recent window to stay within the model context limit
-def trim_messages_window(messages: list, max_messages: int = 20) -> list:
+def trim_messages_window(
+    messages: list, max_messages: int = CONVERSATION_SUMMARY_KEEP_MESSAGES
+) -> list:
     # Only trim when history has grown beyond the allowed window size
     if len(messages) > max_messages:
         return messages[-max_messages:]
     return messages
+
+
+def _message_text(message) -> str:
+    content = getattr(message, "content", "")
+    if isinstance(content, list):
+        return " ".join(str(part) for part in content)
+    return str(content)
+
+
+def _format_messages_for_summary(messages: list) -> str:
+    lines = []
+    for message in messages:
+        role = getattr(message, "type", message.__class__.__name__)
+        text = _message_text(message)
+        if not text and getattr(message, "tool_calls", None):
+            text = f"tool calls: {message.tool_calls}"
+        lines.append(f"{role}: {text}")
+    return "\n".join(lines)
+
+
+def _summarize_messages(existing_summary: str | None, messages: list) -> str:
+    response = llm.invoke(
+        [
+            (
+                "system",
+                "Summarize conversation history for a continuing local AI agent. "
+                "Preserve user preferences, constraints, decisions, important facts, "
+                "tool outcomes, and unresolved tasks. Be concise but specific.",
+            ),
+            (
+                "human",
+                "Existing running summary:\n"
+                f"{existing_summary or 'No previous summary.'}\n\n"
+                "New older messages to merge into the summary:\n"
+                f"{_format_messages_for_summary(messages)}\n\n"
+                "Return only the updated running summary.",
+            ),
+        ]
+    )
+    summary = _message_text(response).strip()
+    return summary or (existing_summary or "")
+
+
+def _prepare_messages_for_prompt(
+    state: AgentState,
+    max_messages: int = CONVERSATION_SUMMARY_KEEP_MESSAGES,
+) -> tuple[list, dict]:
+    messages = state["messages"]
+    existing_count = state.get("summary_message_count", 0) or 0
+    summarized_count = min(existing_count, len(messages))
+    summary = state.get("conversation_summary")
+    cutoff = max(0, len(messages) - max_messages)
+    updates = {}
+
+    # Summarize only the messages that are about to fall out of the prompt
+    # window, without removing them from state or SQLite checkpoint history.
+    if cutoff > summarized_count:
+        summary = _summarize_messages(summary, messages[summarized_count:cutoff])
+        summarized_count = cutoff
+        updates["conversation_summary"] = summary
+        updates["summary_message_count"] = summarized_count
+    elif summarized_count != existing_count:
+        updates["summary_message_count"] = summarized_count
+
+    if not summary:
+        return trim_messages_window(messages, max_messages), updates
+
+    recent_start = max(summarized_count, len(messages) - max_messages)
+    summary_message = SystemMessage(
+        content=(
+            "Conversation summary from earlier messages. Use this as context "
+            "alongside the recent messages below:\n"
+            f"{summary}"
+        )
+    )
+    return [summary_message, *messages[recent_start:]], updates
 
 
 # --- Research subagent ---
@@ -259,14 +342,16 @@ def should_route(state: AgentState) -> str:
 # --- Agent ---
 def agent_node(state: AgentState) -> dict:
     chain = prompt | llm_with_tools
+    prompt_messages, summary_updates = _prepare_messages_for_prompt(state)
     response = chain.invoke(
         {
             "date": date.today().isoformat(),
-            # Trim history before each LLM call to prevent context overflow
-            "messages": trim_messages_window(state["messages"]),
+            # Build the prompt from a rolling summary plus recent messages so
+            # long-running conversations keep old facts without overflowing context.
+            "messages": prompt_messages,
         }
     )
-    return {"messages": [response]}
+    return {"messages": [response], **summary_updates}
 
 
 def should_use_tool(state: AgentState) -> str:

@@ -17,7 +17,7 @@ Flows covered:
   Flow 9  - analyze_image tool
   Flow 10 - analyze_video tool
   Flow 11 - analyze_document tool
-  Flow 12 - trim_messages_window
+  Flow 12 - conversation summary + trim_messages_window
   Flow 13 - parse_user_input (main.py utility)
 """
 
@@ -29,10 +29,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from unittest.mock import MagicMock, patch
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from nodes import (
     _build_code_prompt,
+    _prepare_messages_for_prompt,
     _strip_markdown,
     code_generation_node,
     human_approval_node,
@@ -1377,8 +1378,81 @@ class TestAnalyzeDocument:
 
 
 # ===========================================================================
-# Flow 12 — trim_messages_window
+# Flow 12 — conversation summary + trim_messages_window
 # ===========================================================================
+
+
+class TestConversationSummary:
+    """Prompt preparation summarizes older messages without mutating history."""
+
+    def test_summarizes_messages_that_would_fall_out_of_window(self):
+        early_fact = "AgentState messages contain all checkpoints"
+        messages = [HumanMessage(content=f"Remember this fact: {early_fact}")]
+        messages.extend(
+            HumanMessage(content=f"filler message {i}") for i in range(1, 35)
+        )
+        state = make_state(messages=messages)
+        original_messages = list(messages)
+
+        with patch("nodes.llm") as mock_llm:
+            mock_llm.invoke.return_value = AIMessage(
+                content=f"The user said: {early_fact}."
+            )
+
+            prompt_messages, updates = _prepare_messages_for_prompt(
+                state, max_messages=20
+            )
+
+        assert state["messages"] == original_messages
+        assert len(state["messages"]) == 35
+        mock_llm.invoke.assert_called_once()
+        summary_request = mock_llm.invoke.call_args.args[0][1][1]
+        assert early_fact in summary_request
+        assert isinstance(prompt_messages[0], SystemMessage)
+        assert early_fact in prompt_messages[0].content
+        assert prompt_messages[1:] == messages[15:]
+        assert updates["conversation_summary"] == f"The user said: {early_fact}."
+        assert updates["summary_message_count"] == 15
+
+    def test_merges_only_newly_expired_messages_into_existing_summary(self):
+        messages = [HumanMessage(content=f"msg {i}") for i in range(25)]
+        state = make_state(
+            messages=messages,
+            conversation_summary="Earlier summary",
+            summary_message_count=3,
+        )
+
+        with patch("nodes.llm") as mock_llm:
+            mock_llm.invoke.return_value = AIMessage(content="Merged summary")
+
+            prompt_messages, updates = _prepare_messages_for_prompt(
+                state, max_messages=20
+            )
+
+        summary_request = mock_llm.invoke.call_args.args[0][1][1]
+        assert "Earlier summary" in summary_request
+        assert "msg 3" in summary_request
+        assert "msg 4" in summary_request
+        assert "msg 5" not in summary_request
+        assert isinstance(prompt_messages[0], SystemMessage)
+        assert prompt_messages[1:] == messages[5:]
+        assert updates == {
+            "conversation_summary": "Merged summary",
+            "summary_message_count": 5,
+        }
+
+    def test_does_not_summarize_when_history_is_within_window(self):
+        messages = [HumanMessage(content=f"msg {i}") for i in range(5)]
+        state = make_state(messages=messages)
+
+        with patch("nodes.llm") as mock_llm:
+            prompt_messages, updates = _prepare_messages_for_prompt(
+                state, max_messages=20
+            )
+
+        mock_llm.invoke.assert_not_called()
+        assert prompt_messages == messages
+        assert updates == {}
 
 
 class TestTrimMessagesWindow:
