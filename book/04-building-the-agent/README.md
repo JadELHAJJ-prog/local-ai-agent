@@ -16,6 +16,7 @@ I built this incrementally. Each section describes one layer added on top of the
 3. **Tools + ReAct loop** - add the 5 tools, wire the tool execution cycle
 4. **Code generation node** - add the specialized coder LLM and the two-path code flow
 5. **Docker sandbox** - safe code execution environment
+6. **Rolling conversation summary** - keep full SQLite history while sending the LLM a summary of older context plus the newest messages
 
 ## In this chapter
 
@@ -24,6 +25,8 @@ I built this incrementally. Each section describes one layer added on top of the
 - [tools-react-loop.md](tools-react-loop.md) - ReAct pattern, ToolNode, tool flow
 - [code-generation-node.md](code-generation-node.md) - coder model, two paths, _strip_markdown
 - [docker-sandbox.md](docker-sandbox.md) - why Docker, security flags, Dockerfile.sandbox
+
+Long conversations are handled by the memory strategy in [../03-langgraph/memory.md](../03-langgraph/memory.md): the checkpoint keeps every message, but `agent_node` sends the model a rolling summary for older turns and a configurable recent window.
 
 ---
 

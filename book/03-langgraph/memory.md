@@ -70,18 +70,16 @@ The `.last_session` file stores the most recent thread_id. On startup, option 2 
 
 ## What gets stored
 
-LangGraph stores the entire `AgentState` dict at every checkpoint: messages, retry_count, is_valid, human_feedback, code_generated, input_type - everything. The most important field is `messages`, which is the full conversation history.
+LangGraph stores the entire `AgentState` dict at every checkpoint: messages, retry_count, is_valid, human_feedback, input_type, conversation_summary, summary_message_count - everything. The most important field is `messages`, which is the full conversation history.
 
-The sliding window trim in `agent_node` only affects what the LLM sees per call:
+The prompt sent to the LLM is smaller than the saved state. `agent_node` now builds that prompt from two pieces:
 
-```python
-def trim_messages_window(messages: list, max_messages: int = 20) -> list:
-    if len(messages) > max_messages:
-        return messages[-max_messages:]
-    return messages
-```
+1. `conversation_summary` - a running summary of older messages that have fallen out of the recent window
+2. the most recent messages, controlled by `CONVERSATION_SUMMARY_KEEP_MESSAGES` in `src/config.py`
 
-The full history is always preserved in SQLite. If you have a 100-message conversation, SQLite has all 100, but the LLM only sees the last 20 on each call.
+The important detail is that summarization changes prompt construction, not checkpoint history. The `messages` field is never truncated. If you have a 100-message conversation, SQLite still has all 100 messages, while the LLM sees a compact summary of older context plus the most recent message window.
+
+`summary_message_count` tracks how many saved messages are already included in the running summary. On the next turn, the agent only summarizes newly expired messages instead of summarizing the same old prefix again.
 
 ## Gotchas and lessons learned
 

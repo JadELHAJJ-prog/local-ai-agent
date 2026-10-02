@@ -15,6 +15,12 @@ NUM_PREDICT = int(os.getenv("NUM_PREDICT", "1024"))
 TOP_P = float(os.getenv("TOP_P", "0.9"))
 MAX_FRAMES = int(os.getenv("MAX_FRAMES", "8"))
 
+# How many recent conversation messages are passed to the LLM verbatim.
+# Older messages are rolled into conversation_summary instead of being dropped.
+CONVERSATION_SUMMARY_KEEP_MESSAGES = int(
+    os.getenv("CONVERSATION_SUMMARY_KEEP_MESSAGES", "20")
+)
+
 # Keyword phrases used to route user messages to the code generation path
 CODE_PATTERNS = [
     "write code",
