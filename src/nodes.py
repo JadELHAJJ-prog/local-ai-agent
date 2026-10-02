@@ -90,27 +90,34 @@ def _format_messages_for_summary(messages: list) -> str:
     return "\n".join(lines)
 
 
-def _summarize_messages(existing_summary: str | None, messages: list) -> str:
-    response = llm.invoke(
-        [
-            (
-                "system",
-                "Summarize conversation history for a continuing local AI agent. "
-                "Preserve user preferences, constraints, decisions, important facts, "
-                "tool outcomes, and unresolved tasks. Be concise but specific.",
-            ),
-            (
-                "human",
-                "Existing running summary:\n"
-                f"{existing_summary or 'No previous summary.'}\n\n"
-                "New older messages to merge into the summary:\n"
-                f"{_format_messages_for_summary(messages)}\n\n"
-                "Return only the updated running summary.",
-            ),
-        ]
-    )
+def _summarize_messages(
+    existing_summary: str | None, messages: list
+) -> tuple[str, bool]:
+    try:
+        response = llm.invoke(
+            [
+                (
+                    "system",
+                    "Summarize conversation history for a continuing local AI agent. "
+                    "Preserve user preferences, constraints, decisions, important facts, "
+                    "tool outcomes, and unresolved tasks. Be concise but specific.",
+                ),
+                (
+                    "human",
+                    "Existing running summary:\n"
+                    f"{existing_summary or 'No previous summary.'}\n\n"
+                    "New older messages to merge into the summary:\n"
+                    f"{_format_messages_for_summary(messages)}\n\n"
+                    "Return only the updated running summary.",
+                ),
+            ]
+        )
+    except Exception:
+        logger.warning("Conversation summarization failed", exc_info=True)
+        return existing_summary or "", False
+
     summary = _message_text(response).strip()
-    return summary or (existing_summary or "")
+    return summary or (existing_summary or ""), True
 
 
 def _prepare_messages_for_prompt(
@@ -127,10 +134,13 @@ def _prepare_messages_for_prompt(
     # Summarize only the messages that are about to fall out of the prompt
     # window, without removing them from state or SQLite checkpoint history.
     if cutoff > summarized_count:
-        summary = _summarize_messages(summary, messages[summarized_count:cutoff])
-        summarized_count = cutoff
-        updates["conversation_summary"] = summary
-        updates["summary_message_count"] = summarized_count
+        summary, summary_succeeded = _summarize_messages(
+            summary, messages[summarized_count:cutoff]
+        )
+        if summary_succeeded:
+            summarized_count = cutoff
+            updates["conversation_summary"] = summary
+            updates["summary_message_count"] = summarized_count
     elif summarized_count != existing_count:
         updates["summary_message_count"] = summarized_count
 

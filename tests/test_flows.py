@@ -1441,6 +1441,40 @@ class TestConversationSummary:
             "summary_message_count": 5,
         }
 
+    def test_summary_llm_failure_falls_back_to_recent_window(self):
+        messages = [HumanMessage(content=f"msg {i}") for i in range(35)]
+        state = make_state(messages=messages)
+
+        with patch("nodes.llm") as mock_llm:
+            mock_llm.invoke.side_effect = RuntimeError("ollama unavailable")
+
+            prompt_messages, updates = _prepare_messages_for_prompt(
+                state, max_messages=20
+            )
+
+        assert prompt_messages == messages[-20:]
+        assert updates == {}
+
+    def test_summary_llm_failure_keeps_existing_summary(self):
+        messages = [HumanMessage(content=f"msg {i}") for i in range(25)]
+        state = make_state(
+            messages=messages,
+            conversation_summary="Earlier summary",
+            summary_message_count=3,
+        )
+
+        with patch("nodes.llm") as mock_llm:
+            mock_llm.invoke.side_effect = RuntimeError("ollama unavailable")
+
+            prompt_messages, updates = _prepare_messages_for_prompt(
+                state, max_messages=20
+            )
+
+        assert isinstance(prompt_messages[0], SystemMessage)
+        assert "Earlier summary" in prompt_messages[0].content
+        assert prompt_messages[1:] == messages[-20:]
+        assert updates == {}
+
     def test_does_not_summarize_when_history_is_within_window(self):
         messages = [HumanMessage(content=f"msg {i}") for i in range(5)]
         state = make_state(messages=messages)
